@@ -52,7 +52,9 @@ def letterbox(image: np.ndarray, size: int) -> tuple[np.ndarray, LetterboxMeta]:
     return rgb, LetterboxMeta(scale, float(left), float(top), w, h)
 
 
-def preprocess_letterbox(frames: Sequence[np.ndarray], size: int) -> tuple[np.ndarray, list[LetterboxMeta]]:
+def preprocess_letterbox(
+    frames: Sequence[np.ndarray], size: int
+) -> tuple[np.ndarray, list[LetterboxMeta]]:
     """BGR frames -> float32 ``[B, 3, size, size]`` in [0, 1] plus per-frame metadata."""
     batch = np.empty((len(frames), 3, size, size), dtype=np.float32)
     metas: list[LetterboxMeta] = []

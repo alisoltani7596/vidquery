@@ -103,9 +103,26 @@ def build_engine(
     strongly_typed: bool = False,
     timing_cache: Path | None = None,
 ) -> Path:
-    """Parse ``onnx_path`` and serialise an engine to ``engine_path``."""
+    """Parse ``onnx_path`` and serialise an engine to ``engine_path``.
+
+    On TensorRT releases without weakly-typed precision flags (TensorRT 11+), FP16 is built
+    from an FP16 copy of the ONNX graph as a strongly typed network, and INT8 requires the
+    ModelOpt (Q/DQ) path.
+    """
     import tensorrt as trt
 
+    has_precision_flags = hasattr(trt.BuilderFlag, "FP16")
+    if not has_precision_flags and not strongly_typed:
+        if precision == "fp16":
+            onnx_path = convert_onnx_fp16(onnx_path)
+            strongly_typed = True
+        elif precision == "int8" and calib_batches is not None:
+            raise RuntimeError(
+                f"TensorRT {trt.__version__} has no implicit INT8 calibration; "
+                "use --int8-method modelopt"
+            )
+        else:
+            strongly_typed = True
     profile = profile or ShapeProfile()
     logger = trt.Logger(trt.Logger.INFO)
     trt.init_libnvinfer_plugins(logger, "")
@@ -121,7 +138,7 @@ def build_engine(
 
     config = builder.create_builder_config()
     config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, int(workspace_gb * (1 << 30)))
-    if not allow_tf32 and not strongly_typed:
+    if not allow_tf32 and not strongly_typed and hasattr(trt.BuilderFlag, "TF32"):
         config.clear_flag(trt.BuilderFlag.TF32)  # "fp32" means real FP32 for parity baselines
     if not strongly_typed:
         if precision in ("fp16", "int8"):
@@ -165,6 +182,19 @@ def build_engine(
         timing_cache.write_bytes(bytes(cache_obj.serialize()))
     log.info("Wrote %s in %.1fs", engine_path, time.perf_counter() - t0)
     return engine_path
+
+
+def convert_onnx_fp16(onnx_path: Path) -> Path:
+    """FP16 copy of an ONNX graph (I/O kept FP32) for strongly typed TensorRT builds."""
+    import onnx
+    from onnxconverter_common import float16
+
+    out = onnx_path.with_name(onnx_path.stem + ".fp16.onnx")
+    model = onnx.load(str(onnx_path))
+    fp16 = float16.convert_float_to_float16(model, keep_io_types=True)
+    onnx.save(fp16, str(out))
+    log.info("Wrote FP16 ONNX %s for a strongly typed build", out)
+    return out
 
 
 def resolve_sample_shape(onnx_path: Path, fallback: Sequence[int]) -> tuple[int, ...]:

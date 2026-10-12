@@ -29,7 +29,13 @@ dependencies = [
 # CPU inference for the onnxruntime backend. Do not combine with the `gpu` extra.
 cpu = ["onnxruntime>=1.18"]
 # GPU extras used inside the NGC TensorRT container (tensorrt itself comes from the container).
-gpu = ["onnxruntime-gpu>=1.18", "nvidia-ml-py>=12.535", "sentencepiece>=0.2", "protobuf>=4.25"]
+gpu = [
+    "onnxruntime-gpu>=1.18",
+    "nvidia-ml-py>=12.535",
+    "onnxconverter-common>=1.14",
+    "sentencepiece>=0.2",
+    "protobuf>=4.25",
+]
 yolo = ["ultralytics>=8.3.200"]
 int8 = ["nvidia-modelopt[onnx]>=0.27"]
 dev = ["pytest>=8.0", "ruff>=0.6", "mypy>=1.10", "types-PyYAML>=6.0"]
@@ -82,6 +88,7 @@ module = [
     "onnxruntime.*",
     "pynvml.*",
     "modelopt.*",
+    "onnxconverter_common.*",
     "transformers.*",
     "cv2.*",
 ]

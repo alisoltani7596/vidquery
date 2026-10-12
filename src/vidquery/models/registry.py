@@ -132,12 +132,21 @@ def _encoder_spec(settings: Settings, component: Component) -> ComponentSpec:
 
         if image:
             return ComponentSpec(
-                component, name, "pixel_values", (3, TINY_IMAGE_SIZE, TINY_IMAGE_SIZE),
-                np.float32, "embeddings",
+                component,
+                name,
+                "pixel_values",
+                (3, TINY_IMAGE_SIZE, TINY_IMAGE_SIZE),
+                np.float32,
+                "embeddings",
                 lambda: SiglipImageTower(build_tiny_siglip(settings.seed).vision_model),
             )
         return ComponentSpec(
-            component, name, "input_ids", (TINY_TEXT_LENGTH,), np.int64, "embeddings",
+            component,
+            name,
+            "input_ids",
+            (TINY_TEXT_LENGTH,),
+            np.int64,
+            "embeddings",
             lambda: SiglipTextTower(build_tiny_siglip(settings.seed).text_model),
             int_high=TINY_VOCAB,
         )
@@ -151,12 +160,23 @@ def _encoder_spec(settings: Settings, component: Component) -> ComponentSpec:
 
         if image:
             return ComponentSpec(
-                component, name, "pixel_values", (3, MOCK_IMAGE_SIZE, MOCK_IMAGE_SIZE),
-                np.float32, "embeddings", ColorImageNet,
+                component,
+                name,
+                "pixel_values",
+                (3, MOCK_IMAGE_SIZE, MOCK_IMAGE_SIZE),
+                np.float32,
+                "embeddings",
+                ColorImageNet,
             )
         return ComponentSpec(
-            component, name, "input_ids", (MOCK_TEXT_LENGTH,), np.int64, "embeddings",
-            ColorTextNet, int_high=8,
+            component,
+            name,
+            "input_ids",
+            (MOCK_TEXT_LENGTH,),
+            np.int64,
+            "embeddings",
+            ColorTextNet,
+            int_high=8,
         )
 
     from vidquery.models.siglip import (
@@ -169,13 +189,23 @@ def _encoder_spec(settings: Settings, component: Component) -> ComponentSpec:
     if image:
         size = int(siglip_config(name).vision_config.image_size)
         return ComponentSpec(
-            component, name, "pixel_values", (3, size, size), np.float32, "embeddings",
+            component,
+            name,
+            "pixel_values",
+            (3, size, size),
+            np.float32,
+            "embeddings",
             lambda: SiglipImageTower(load_hf_siglip(name).vision_model),
         )
     text_cfg = siglip_config(name).text_config
     length = min(settings.encoder.max_text_length, int(text_cfg.max_position_embeddings))
     return ComponentSpec(
-        component, name, "input_ids", (length,), np.int64, "embeddings",
+        component,
+        name,
+        "input_ids",
+        (length,),
+        np.int64,
+        "embeddings",
         lambda: SiglipTextTower(load_hf_siglip(name).text_model),
         int_high=int(text_cfg.vocab_size),
     )

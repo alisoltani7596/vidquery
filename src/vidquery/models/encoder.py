@@ -67,8 +67,7 @@ class ImageEncoder:
             raise ValueError("encode() needs at least one image")
         bs = min(batch_size, self.backend.max_batch_size or batch_size)
         chunks = [
-            self.backend(self.preprocess(images[i : i + bs]))[0]
-            for i in range(0, len(images), bs)
+            self.backend(self.preprocess(images[i : i + bs]))[0] for i in range(0, len(images), bs)
         ]
         return l2_normalize(np.concatenate(chunks, axis=0))
 
