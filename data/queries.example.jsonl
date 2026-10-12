@@ -1,0 +1,3 @@
+{"id": "example-1", "query": "a man in a dark jacket walking left", "video_id": "MOT17-04", "gt": [[0.0, 0.0]]}
+{"id": "example-2", "query": "a woman pushing a stroller", "video_id": "MOT17-09", "gt": [[0.0, 0.0]]}
+{"id": "example-3", "query": "a person in a white shirt standing still", "video_id": "MOT17-02", "gt": [[0.0, 0.0]]}
