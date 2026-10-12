@@ -1,0 +1,40 @@
+# Digital Research Alliance "Fir" cluster (H100). Paths live on $SCRATCH; jobs run offline
+# (weights are pre-fetched on a login node by slurm/setup_env.sh).
+device: cuda
+index_dir: ${SCRATCH}/vidquery/index/mot17
+artifacts_dir: ${SCRATCH}/vidquery/artifacts
+faiss_factory: Flat
+
+detector:
+  model: ${SCRATCH}/vidquery/weights/yolo26s.pt
+  backend: tensorrt
+  precision: fp16
+  input_size: 640
+  conf_threshold: 0.35
+
+encoder:
+  model: google/siglip2-so400m-patch16-384
+  backend: tensorrt
+  precision: fp16
+  text_backend: pytorch
+
+ingest:
+  sample_fps: 2.0
+  detector_batch_size: 16
+  encoder_batch_size: 32
+
+query:
+  top_k: 300
+  max_segments: 10
+  merge_gap_s: 1.5
+  score_margin: 0.05
+
+verifier:
+  enabled: false                       # eval.sbatch turns it on with --set verifier.enabled=true
+  base_url: http://localhost:8000/v1   # overridden from the vLLM endpoint file in slurm jobs
+  model: Qwen/Qwen3.5-4B
+  top_n: 10
+  max_concurrency: 16
+
+server:
+  allowed_roots: ["${SCRATCH}/vidquery/data"]

@@ -1,0 +1,13 @@
+# Randomly initialised tiny models: no weights, runs on CPU in seconds.
+# Retrieval results are meaningless; use this for export/parity/benchmark smoke tests.
+device: cpu
+index_dir: data/index-tiny
+artifacts_dir: models/tiny
+detector:
+  model: tiny
+  input_size: 64
+  conf_threshold: 0.5
+encoder:
+  model: tiny
+ingest:
+  min_box_size: 4

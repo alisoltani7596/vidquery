@@ -1,0 +1,14 @@
+# Deterministic colour "models" with real semantics: query "person in red" finds red blobs.
+# Pair with scripts/make_synthetic_data.py for a weight-free end-to-end demo.
+device: cpu
+index_dir: data/index-mock
+artifacts_dir: models/mock
+detector:
+  model: color-blob
+encoder:
+  model: color-mock
+ingest:
+  sample_fps: 2.0
+  min_box_size: 6
+query:
+  score_margin: 0.05

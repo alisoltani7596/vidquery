@@ -1,0 +1,50 @@
+# Real models on a single GPU. Weights download on first use (or pre-fetch them; see slurm/).
+device: auto
+index_dir: data/index
+artifacts_dir: models
+faiss_factory: Flat
+
+detector:
+  model: yolo26s.pt            # Ultralytics YOLO26-S (NMS-free head); yolo11s.pt also works
+  backend: pytorch             # pytorch | onnxruntime | tensorrt
+  precision: fp32              # fp32 | fp16 (pytorch/tensorrt) | int8 (tensorrt)
+  input_size: 640
+  conf_threshold: 0.35
+  iou_threshold: 0.5
+  person_class: 0
+
+encoder:
+  model: google/siglip2-so400m-patch16-384   # FixRes SigLIP 2 (static shapes -> TensorRT friendly)
+  backend: pytorch
+  precision: fp32
+  text_backend: pytorch
+  max_text_length: 64
+
+ingest:
+  sample_fps: 2.0
+  detector_batch_size: 8
+  encoder_batch_size: 32
+  crop_margin: 0.1
+  min_box_size: 24
+  max_crops_per_frame: 30
+  embed_frames: true
+  embed_crops: true
+
+query:
+  top_k: 200
+  max_segments: 10
+  merge_gap_s: 1.5
+  score_margin: 0.05
+  kind: both
+
+verifier:
+  enabled: false
+  base_url: http://localhost:8000/v1
+  model: Qwen/Qwen3.5-4B
+  top_n: 10
+  mode: rerank
+  alpha: 0.7
+
+server:
+  host: 0.0.0.0
+  port: 8080
