@@ -1,0 +1,16 @@
+.git
+.venv
+venv
+**/__pycache__
+.mypy_cache
+.ruff_cache
+.pytest_cache
+data
+models
+results
+*.onnx
+*.onnx.data
+*.engine
+*.sif
+*.mp4
+*.gif

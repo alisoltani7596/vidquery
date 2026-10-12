@@ -1,0 +1,37 @@
+# Slim CPU image: API server, CLI, PyTorch + ONNX Runtime backends (no CUDA).
+#   docker build -f docker/Dockerfile.cpu -t vidquery:cpu .
+#   docker run --rm -p 8080:8080 -v $PWD/data:/data vidquery:cpu serve
+FROM python:3.11-slim
+
+ENV PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# libgl1/libglib2.0-0: OpenCV (Ultralytics pulls the non-headless build).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# CPU-only torch first so nothing drags in CUDA wheels.
+RUN pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision
+
+WORKDIR /app
+COPY pyproject.toml README.md ./
+COPY src ./src
+RUN pip install ".[cpu,yolo]"
+COPY configs ./configs
+COPY scripts ./scripts
+
+RUN useradd --create-home --uid 1000 app && mkdir -p /data && chown app /data
+USER app
+ENV VIDQUERY_CONFIG=/app/configs/default.yaml \
+    HF_HOME=/data/hf-cache \
+    YOLO_CONFIG_DIR=/data/ultralytics
+
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=4)"
+
+ENTRYPOINT ["vidquery"]
+CMD ["serve", "--set", "device=cpu", "--set", "index_dir=/data/index", "--set", "artifacts_dir=/data/models"]

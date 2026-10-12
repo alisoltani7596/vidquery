@@ -36,9 +36,10 @@ gpu = [
     "sentencepiece>=0.2",
     "protobuf>=4.25",
 ]
-yolo = ["ultralytics>=8.3.200"]
+# onnxslim is listed explicitly so Ultralytics never tries to pip-install it on offline nodes.
+yolo = ["ultralytics>=8.3.200", "onnxslim>=0.1.50"]
 int8 = ["nvidia-modelopt[onnx]>=0.27"]
-dev = ["pytest>=8.0", "ruff>=0.6", "mypy>=1.10", "types-PyYAML>=6.0"]
+dev = ["pytest>=8.0", "ruff==0.17.0", "mypy==2.4.0", "types-PyYAML>=6.0"]
 
 [project.scripts]
 vidquery = "vidquery.cli:main"

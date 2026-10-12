@@ -1,0 +1,37 @@
+# GPU image on the NVIDIA TensorRT NGC container (TensorRT + CUDA + cuDNN preinstalled).
+#   docker build -f docker/Dockerfile.gpu -t vidquery:gpu .
+#   docker run --rm --gpus all -p 8080:8080 -v $PWD/data:/data vidquery:gpu serve
+#
+# TRT_TAG: 26.03-py3 ships TensorRT 10.16 (CUDA 13). 26.04+ move to TensorRT 11; the engine
+# builder handles that, but INT8 then needs --int8-method modelopt.
+# TORCH_INDEX must match the container's CUDA major version (cu130 for CUDA 13.x).
+ARG TRT_TAG=26.03-py3
+FROM nvcr.io/nvidia/tensorrt:${TRT_TAG}
+
+ARG TORCH_INDEX=https://download.pytorch.org/whl/cu130
+ENV PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_BREAK_SYSTEM_PACKAGES=1 \
+    PYTHONUNBUFFERED=1
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python3 -m pip install --index-url ${TORCH_INDEX} torch torchvision
+
+WORKDIR /app
+COPY pyproject.toml README.md ./
+COPY src ./src
+RUN python3 -m pip install ".[gpu,yolo]" \
+    && python3 -c "import tensorrt, torch, onnxruntime; print('TensorRT', tensorrt.__version__, 'torch', torch.__version__, 'ORT', onnxruntime.__version__, onnxruntime.get_available_providers())"
+COPY configs ./configs
+COPY scripts ./scripts
+COPY slurm ./slurm
+
+ENV VIDQUERY_CONFIG=/app/configs/default.yaml \
+    HF_HOME=/data/hf-cache \
+    YOLO_CONFIG_DIR=/data/ultralytics
+EXPOSE 8080
+ENTRYPOINT ["vidquery"]
+CMD ["serve", "--set", "index_dir=/data/index", "--set", "artifacts_dir=/data/models"]
