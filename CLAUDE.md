@@ -79,8 +79,12 @@ scripts/  slurm/  configs/  docker/  tests/
   (`VQ_ONLINE=1` lifts it), and Ultralytics auto-install is disabled.
 - Everything lives under `$SCRATCH/vidquery` (see `slurm/README.md` for the layout); `$SCRATCH` is
   purged, so copy keepers to `/project/def-branzana/`.
+- **File quota is the tight resource** (1M files per user on /scratch, shared with other
+  projects). The venv is one SquashFS image (`$VQ_VENV_IMG`, mounted at `/opt/venv`; versions
+  pinned in `slurm/venv-lock-<tag>.txt`), MOT17 frames are decoded from the zip and never
+  extracted, and artifacts are a few large files. Don't write per-frame or per-hit image files.
 - `slurm/env.sh` is the single source of paths and versions. It defines `vq_exec` (TensorRT
-  container + venv, `--cleanenv`, explicit env file and binds) and `vq_vllm_exec`. Submit jobs
+  container + venv image, `--cleanenv`, explicit env file and binds) and `vq_vllm_exec`. Submit jobs
   from the repo root so `SLURM_SUBMIT_DIR` finds it.
 - Logs: `$SCRATCH/vidquery/logs/<job-name>-<jobid>.out`; results: `$SCRATCH/vidquery/results/`.
 

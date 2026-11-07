@@ -10,10 +10,10 @@ it).
 | Path | Contents |
 |---|---|
 | `containers/` | `tensorrt_<tag>.sif`, `vllm-openai_<tag>.sif` |
-| `venv-trt-<tag>/` | venv created inside the TensorRT container (`--system-site-packages`) |
+| `venv-trt-<tag>.sqfs` | the venv, packed into one SquashFS image (mounted read-only at `/opt/venv`) |
 | `cache/` | Hugging Face, torch, pip, Apptainer, vLLM and Triton caches |
 | `weights/` | `yolo26s.pt` |
-| `data/MOT17/` | MOT17 sequences (`train/`, `test/`) and `videos/*.mp4` |
+| `data/MOT17/` | `MOT17.zip`, `videos/*.mp4` and per-sequence `seqinfo.ini` / `gt/gt.txt` (no frames) |
 | `data/queries.jsonl` | hand-written eval queries (you create this) |
 | `artifacts/onnx`, `artifacts/trt` | exported ONNX models and TensorRT engines |
 | `index/mot17/` | FAISS index + metadata |
@@ -39,9 +39,18 @@ sbatch slurm/setup.sbatch            # containers, venv, weights, MOT17 (~5.5 GB
 ```bash
 apptainer pull $VQ_TRT_SIF  docker://nvcr.io/nvidia/tensorrt:26.03-py3
 apptainer pull $VQ_VLLM_SIF docker://vllm/vllm-openai:v0.17.1
-apptainer exec $VQ_TRT_SIF python3 -m venv --system-site-packages $VQ_VENV
-# + pip install torch (cu130 wheels) and -e .[gpu,yolo,dev], weight downloads, CPU tests
+apptainer exec $VQ_TRT_SIF python3 -m venv --system-site-packages /opt/venv   # on $SLURM_TMPDIR
+# + pip install torch (cu130 wheels) and -e .[gpu,yolo,dev], pinned by slurm/venv-lock-<tag>.txt
+mksquashfs <venv> $VQ_VENV_IMG -comp gzip       # one file instead of ~47K
+# + weight downloads, MOT17 -> mp4 (frames decoded from the zip, never extracted), CPU tests
 ```
+
+The /scratch file quota (1M files per user) is the tight resource on Fir, so the venv lives in a
+single SquashFS image that `vq_exec` binds read-only at `/opt/venv` (gzip: this Apptainer can't
+mount zstd images). Adding a package means rebuilding it: add it to `pyproject.toml`, then
+`STEPS=venv sbatch slurm/setup.sbatch`, and refresh the lock from `$VQ_VENV_IMG.freeze.txt` once
+the GPU checks pass. ONNX models (one `.onnx.data` file each), TensorRT engines (one per
+precision) and the FAISS index (3 files) are already a handful of large files.
 
 Inside a job, `APPTAINER_TMPDIR` is the node-local `$SLURM_TMPDIR` (env.sh sets it). If a pull
 gets killed, resubmit: pulls resume from the layer cache.
@@ -71,5 +80,5 @@ vq_exec python -m pytest -m gpu tests
 
 All of these are in `slurm/env.sh` and can be overridden from the environment:
 `VQ_TRT_TAG` (and the matching `VQ_TORCH_INDEX`), `VQ_VLLM_TAG`, `VQ_VLM_MODEL`,
-`VQ_SIGLIP_MODEL`, `VQ_YOLO_WEIGHTS`. Changing `VQ_TRT_TAG` creates a new venv path. TensorRT
+`VQ_SIGLIP_MODEL`, `VQ_YOLO_WEIGHTS`. Changing `VQ_TRT_TAG` creates a new venv image (and needs a new lock file). TensorRT
 engines must be rebuilt after any TensorRT or GPU change.

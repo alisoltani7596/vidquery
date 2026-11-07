@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# Download MOT17 (frames + labels) into $SCRATCH and convert each sequence to an mp4.
-# slurm/setup.sbatch runs this in a job, because unzipping and converting are heavy:
+# Download MOT17 into $SCRATCH and convert each sequence to an mp4. Frames are decoded straight
+# from MOT17.zip, never extracted: loose JPEGs (~11K per copy) would eat the /scratch file
+# quota. Only the mp4s and the small seqinfo.ini / gt.txt files land on disk.
+# slurm/setup.sbatch runs this in a job, because converting is heavy:
 #   bash scripts/download_mot17.sh                 # -> $SCRATCH/vidquery/data/MOT17
 #   bash scripts/download_mot17.sh /some/other/dir
-#   NO_CONVERT=1 bash scripts/download_mot17.sh    # keep image sequences only
 #
-# MOT17.zip is ~5.5 GB. Downloads resume if interrupted. The MOTChallenge data is licensed
-# CC BY-NC-SA 3.0. Cite the MOT16/17 paper when you publish results.
+# MOT17.zip is ~5.5 GB and is kept, so videos can be rebuilt. Downloads resume if interrupted.
+# The MOTChallenge data is licensed CC BY-NC-SA 3.0. Cite the MOT16/17 paper when you publish.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
@@ -18,36 +19,14 @@ mkdir -p "$DEST"
 echo "Downloading $URL -> $ZIP"
 curl -L --fail --retry 5 --retry-delay 10 -C - -o "$ZIP" "$URL"
 
-if [[ ! -d "$DEST/train" ]]; then
-    echo "Unzipping (this takes a few minutes on Lustre)"
-    tmp="$DEST/.unzip"
-    rm -rf "$tmp" && mkdir -p "$tmp"
-    # The DPM/FRCNN/SDP copies share the same frames, so extract only FRCNN (~11K files
-    # instead of ~34K; the Fir /scratch file quota is tight). MOT17_ALL_COPIES=1 extracts all.
-    members=('*-FRCNN/*')
-    [[ "${MOT17_ALL_COPIES:-0}" == "1" ]] && members=()
-    unzip -q "$ZIP" "${members[@]}" -d "$tmp"
-    # The archive has a top-level MOT17/ directory; flatten it.
-    src="$tmp"
-    [[ -d "$tmp/MOT17" ]] && src="$tmp/MOT17"
-    mv "$src"/* "$DEST"/
-    rm -rf "$tmp"
-fi
-echo "Sequences:"
-find "$DEST" -mindepth 2 -maxdepth 2 -type d -name 'MOT17-*-FRCNN' | sort
-
-if [[ "${NO_CONVERT:-0}" == "1" ]]; then
-    echo "Skipping mp4 conversion (ingest can read $DEST/train/<seq> directly)."
-    exit 0
-fi
-
-# Convert one copy of each sequence (the DPM/FRCNN/SDP copies have identical frames).
-CONVERT=(python "$REPO/scripts/frames_to_video.py" --mot-root "$DEST" --out "$DEST/videos")
+# One copy of each sequence (the DPM/FRCNN/SDP copies have identical frames).
+CONVERT=(python "$REPO/scripts/frames_to_video.py" --zip "$ZIP" --out "$DEST/videos"
+    --meta "$DEST")
 if [[ -f "$REPO/slurm/env.sh" && -n "${SCRATCH:-}" ]]; then
     export VQ_REPO="$REPO"
     # shellcheck source=/dev/null
     source "$REPO/slurm/env.sh"
-    if [[ -f "$VQ_TRT_SIF" && -d "$VQ_VENV" ]]; then
+    if [[ -f "$VQ_TRT_SIF" && -f "$VQ_VENV_IMG" ]]; then
         vq_exec "${CONVERT[@]}"
         echo "Videos in $DEST/videos"
         exit 0
