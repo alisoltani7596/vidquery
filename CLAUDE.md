@@ -63,6 +63,9 @@ scripts/  slurm/  configs/  docker/  tests/
 - Never commit weights, ONNX files, engines, SIFs, indexes or datasets (see `.gitignore`).
   Results tables (`results/*.md`) may be committed; JSON stays ignored.
 - Commits: small and logical, imperative subject, body explains why.
+- No Claude attribution in commits or PRs: no `Co-Authored-By` or `Claude-Session` trailers and
+  no "Generated with Claude Code" lines. `.claude/settings.json` turns these off; commits are
+  authored with the repo's own `git config user.name/user.email`.
 
 ## The cluster: Fir (Digital Research Alliance of Canada)
 

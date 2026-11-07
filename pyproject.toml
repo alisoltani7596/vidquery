@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=69", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,6 +8,9 @@ version = "0.1.0"
 description = "Text-to-video search: person detection, SigLIP embeddings, FAISS retrieval and optional VLM verification."
 readme = "README.md"
 requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Ali Soltani", email = "alisoltani7596@gmail.com" }]
 dependencies = [
     "numpy>=1.26",
     "opencv-python-headless>=4.9",
