@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import cv2
 import pytest
 import yaml
 from PIL import Image
@@ -68,6 +69,27 @@ def test_cli_ingest_query_videos_demo(
     mp4 = tmp_path / "demo.mp4"
     assert cli_main(["demo", "blue", "-c", str(cfg), "--out", str(mp4), "--segments", "2"]) == 0
     assert mp4.stat().st_size > 1000
+
+    sheets = tmp_path / "browse"
+    args = ["browse", "red", "person in blue", "-c", str(cfg), "--out", str(sheets), "-k", "3"]
+    assert cli_main([*args, "--timeline", "synthetic", "--every", "2"]) == 0
+    out = capsys.readouterr().out
+    assert '== "red"' in out and "  1. synthetic" in out and '"gt": []' in out
+    names = sorted(p.name for p in sheets.iterdir())
+    assert names == ["01-red.jpg", "02-person-in-blue.jpg", "timeline-synthetic.jpg"]
+    sheet = cv2.imread(str(sheets / "timeline-synthetic.jpg"))
+    assert sheet is not None and sheet.shape[1] > 320 * 6  # 6 tiles (12 s every 2 s) in one row
+    assert cli_main(["browse", "-c", str(cfg)]) == 2
+
+
+def test_browse_helpers(tmp_path: Path) -> None:
+    from vidquery.browse import read_queries, slugify
+
+    assert slugify("A man in a RED jacket!") == "a-man-in-a-red-jacket"
+    assert slugify("???") == "query"
+    qfile = tmp_path / "q.txt"
+    qfile.write_text('# comment\na person running\n\n{"query": "a dog", "video_id": "x"}\n')
+    assert read_queries(qfile) == ["a person running", "a dog"]
 
 
 def test_cli_export_and_parity(

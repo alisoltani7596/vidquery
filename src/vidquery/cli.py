@@ -107,6 +107,20 @@ def cmd_demo(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_browse(args: argparse.Namespace) -> int:
+    from vidquery.browse import browse, read_queries
+    from vidquery.pipeline import VidQuery
+
+    queries = list(args.text) + (read_queries(args.queries) if args.queries else [])
+    if not queries and not args.timeline:
+        print("Give queries (positional or --queries) and/or --timeline", file=sys.stderr)
+        return 2
+    engine = VidQuery(_settings(args))
+    browse(engine, queries, Path(args.out), args.k, args.video or None, args.timeline, args.every)
+    engine.close()
+    return 0
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     from vidquery.api import serve
 
@@ -236,6 +250,23 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--context", type=float, default=0.5, help="Seconds around each segment")
     p.add_argument("--verify", action=argparse.BooleanOptionalAction, default=None)
     p.set_defaults(func=cmd_demo)
+
+    p = sub.add_parser("browse", help="Print top segments and save contact sheets")
+    _add_common(p)
+    p.add_argument("text", nargs="*", help="Queries")
+    p.add_argument("--queries", help="File with one query per line, or JSONL with 'query'")
+    p.add_argument("-k", type=int, default=10, help="Segments per query")
+    p.add_argument("--video", action="append", default=[], help="Restrict to video id(s)")
+    p.add_argument(
+        "--timeline",
+        nargs="+",
+        default=[],
+        metavar="VIDEO_ID",
+        help="Also save one sheet of frames every --every seconds per video ('all': every video)",
+    )
+    p.add_argument("--every", type=float, default=1.0, help="Timeline step in seconds")
+    p.add_argument("--out", default="browse", help="Directory for the sheets")
+    p.set_defaults(func=cmd_browse)
 
     p = sub.add_parser("serve", help="Run the FastAPI server")
     _add_common(p)
