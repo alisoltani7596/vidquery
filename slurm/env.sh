@@ -40,7 +40,7 @@ export VQ_YOLO_WEIGHTS="${VQ_YOLO_WEIGHTS:-yolo26s.pt}"
 export VQ_VLM_MODEL="${VQ_VLM_MODEL:-Qwen/Qwen3.5-4B}"
 export VQ_VLLM_PORT="${VQ_VLLM_PORT:-8000}"
 
-# --- caches on $SCRATCH (home quota is small; compute nodes run offline) ---------------
+# --- caches on $SCRATCH (home quota is small) --------------------------------------------
 export HF_HOME="$VQ_ROOT/cache/huggingface"
 export TORCH_HOME="$VQ_ROOT/cache/torch"
 export XDG_CACHE_HOME="$VQ_ROOT/cache/xdg"
@@ -52,8 +52,9 @@ export APPTAINER_CACHEDIR="$VQ_ROOT/cache/apptainer"
 export APPTAINER_TMPDIR="${SLURM_TMPDIR:-$VQ_ROOT/cache/apptainer-tmp}"
 export VIDQUERY_CONFIG="$VQ_CONFIG"
 export YOLO_AUTOINSTALL=false   # never let Ultralytics pip-install at runtime
-if [[ -n "${SLURM_JOB_ID:-}" ]]; then
-    # Compute nodes have no internet: everything must already be in the caches.
+if [[ -n "${SLURM_JOB_ID:-}" && "${VQ_ONLINE:-0}" != "1" ]]; then
+    # Compute nodes do have internet, but runs should only use what is already cached, so a
+    # benchmark can't silently fetch something new. VQ_ONLINE=1 lifts this (setup.sbatch).
     export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 fi
 

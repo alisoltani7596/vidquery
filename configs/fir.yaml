@@ -1,5 +1,5 @@
 # Digital Research Alliance "Fir" cluster (H100). Paths live on $SCRATCH; jobs run offline
-# (weights are pre-fetched on a login node by slurm/setup_env.sh).
+# by default (weights are pre-fetched by slurm/setup.sbatch).
 device: cuda
 index_dir: ${SCRATCH}/vidquery/index/mot17
 artifacts_dir: ${SCRATCH}/vidquery/artifacts

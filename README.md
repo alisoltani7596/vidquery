@@ -165,14 +165,15 @@ The `slurm/` folder targets the Digital Research Alliance of Canada **Fir** clus
 Slurm + Apptainer cluster works with small edits to `slurm/env.sh`. Docker isn't available there,
 so the NGC TensorRT and vLLM images are pulled as Apptainer SIFs. A Python venv is created
 *inside* the TensorRT container (`--system-site-packages`, so it sees the container's TensorRT).
-Containers, venv, weights, caches, data and results all live on `$SCRATCH`, and jobs run offline.
+Containers, venv, weights, caches, data and results all live on `$SCRATCH`. Jobs use cached files
+only by default (`VQ_ONLINE=1` lifts this).
 
 ```bash
-# On a login node (has internet)
 git clone <this repo> ~/vidquery && cd ~/vidquery
-module load apptainer
-bash slurm/setup_env.sh                 # apptainer pull TensorRT + vLLM, venv, weights, CPU tests
-bash scripts/download_mot17.sh          # MOT17 -> $SCRATCH/vidquery/data/MOT17 (+ mp4s)
+mkdir -p $SCRATCH/vidquery/logs
+
+# One-time CPU job: pull TensorRT + vLLM, venv, weights, MOT17 (+ mp4s), CPU tests
+sbatch slurm/setup.sbatch
 
 # GPU jobs (submit from the repo root)
 sbatch slurm/export.sbatch              # ONNX + TensorRT FP32/FP16 (+ INT8=1), parity, GPU tests

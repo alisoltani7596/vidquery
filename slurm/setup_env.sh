@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# One-time setup on a Fir LOGIN node (compute nodes have no internet access).
-#   cd ~/vidquery && bash slurm/setup_env.sh            # everything
-#   bash slurm/setup_env.sh containers venv              # only some steps
+# One-time setup. Run it through slurm/setup.sbatch: SIF builds and the CPU tests are heavy, and
+# torch CPU work aborts on Fir login nodes (AOCL BLIS). Compute nodes have internet access.
+#   sbatch slurm/setup.sbatch                            # from the repo root
+#   VQ_ONLINE=1 bash slurm/setup_env.sh containers venv  # only some steps, inside a job
 # Steps: containers | venv | weights | check   (default: all)
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -38,7 +39,10 @@ for step in "${steps[@]}"; do
             python -m pip install --upgrade pip
             python -m pip install --index-url '$VQ_TORCH_INDEX' torch torchvision
             python -m pip install -e '$VQ_REPO[gpu,yolo,dev]'
-            python -c 'import tensorrt, torch, onnxruntime; print(\"TensorRT\", tensorrt.__version__, \"| torch\", torch.__version__, \"| ORT\", onnxruntime.__version__)'
+            python -c 'import torch, onnxruntime; print(\"torch\", torch.__version__, \"| ORT\", onnxruntime.__version__, onnxruntime.get_available_providers())'
+            # This step has no --nv and setup.sbatch has no GPU; export.sbatch rechecks on a GPU.
+            python -c 'import tensorrt; print(\"TensorRT\", tensorrt.__version__)' \
+                || echo 'tensorrt import failed without a GPU; recheck on a GPU node'
         "
         ;;
     weights)

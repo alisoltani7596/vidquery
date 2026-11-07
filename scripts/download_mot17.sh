@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Download MOT17 (frames + labels) into $SCRATCH and convert each sequence to an mp4.
-# Run on a LOGIN node (compute nodes have no internet):
+# slurm/setup.sbatch runs this in a job, because unzipping and converting are heavy:
 #   bash scripts/download_mot17.sh                 # -> $SCRATCH/vidquery/data/MOT17
 #   bash scripts/download_mot17.sh /some/other/dir
 #   NO_CONVERT=1 bash scripts/download_mot17.sh    # keep image sequences only

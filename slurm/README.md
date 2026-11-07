@@ -1,8 +1,9 @@
 # vidquery on the Fir cluster (Slurm + Apptainer)
 
 Account `def-branzana`, user `ali7596`, GPUs: H100 80 GB (`--gpus-per-node=h100:1`).
-Docker isn't available, so OCI images are pulled into Apptainer SIFs. Compute nodes have no
-internet access: everything downloads on a login node and jobs run with `HF_HUB_OFFLINE=1`.
+Docker isn't available, so OCI images are pulled into Apptainer SIFs. Compute nodes have internet
+access, but jobs default to `HF_HUB_OFFLINE=1` so they only use cached files (`VQ_ONLINE=1` lifts
+it).
 
 ## Layout on `$SCRATCH/vidquery`
 
@@ -22,13 +23,15 @@ internet access: everything downloads on a login node and jobs run with `HF_HUB_
 `$SCRATCH` is purged after a period of inactivity. Copy `results/` you want to keep to
 `/project/def-branzana/...` or into the repo.
 
-## One-time setup (login node)
+## One-time setup (CPU job)
+
+SIF builds and the CPU tests are heavy, and torch CPU work aborts on login nodes, so setup runs
+as a job:
 
 ```bash
 cd ~/vidquery
-module load apptainer
-bash slurm/setup_env.sh              # steps: containers venv weights check
-bash scripts/download_mot17.sh       # ~5.5 GB, then converts sequences to mp4
+mkdir -p $SCRATCH/vidquery/logs
+sbatch slurm/setup.sbatch            # containers, venv, weights, MOT17 (~5.5 GB + mp4s), CPU tests
 ```
 
 `setup_env.sh` runs:
@@ -40,13 +43,14 @@ apptainer exec $VQ_TRT_SIF python3 -m venv --system-site-packages $VQ_VENV
 # + pip install torch (cu130 wheels) and -e .[gpu,yolo,dev], weight downloads, CPU tests
 ```
 
-If a pull gets killed on the login node (memory/time limits), set `APPTAINER_TMPDIR` to a
-directory on `$SCRATCH` (env.sh does) and retry. Pulls resume from the layer cache.
+Inside a job, `APPTAINER_TMPDIR` is the node-local `$SLURM_TMPDIR` (env.sh sets it). If a pull
+gets killed, resubmit: pulls resume from the layer cache.
 
 ## Jobs (submit from the repo root)
 
 | Script | What it does | Useful variables |
 |---|---|---|
+| `setup.sbatch` | one-time setup: containers, venv, weights, MOT17, CPU tests | `STEPS="venv weights"` |
 | `export.sbatch` | ONNX export (3 components), TensorRT FP32/FP16 engines, parity report, `pytest -m gpu` | `INT8=1`, `INT8_METHOD=modelopt`, `EXPORTER=torchscript`, `CALIB=<dir>` |
 | `benchmark.sbatch` | latency/throughput/peak memory, batch 1/4/8/16, ingest FPS | `BACKENDS="..."`, `VIDEO=<mp4>` |
 | `ingest.sbatch` | ingest every video/sequence in a directory | `DATASET=<dir>`, `EXTRA="--set ..."` |

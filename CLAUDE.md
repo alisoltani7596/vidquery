@@ -73,8 +73,10 @@ scripts/  slurm/  configs/  docker/  tests/
   `--gpus-per-node=h100:1`.
 - **No Docker.** Use Apptainer (`module load apptainer`). Images:
   `docker://nvcr.io/nvidia/tensorrt:26.03-py3` and `docker://vllm/vllm-openai:v0.17.1`.
-- **Compute nodes are offline.** Downloads (apptainer pull, pip, HF weights, YOLO weights, MOT17)
-  happen on a login node. Jobs set `HF_HUB_OFFLINE=1`, and Ultralytics auto-install is disabled.
+- **Compute nodes have internet** (checked November 2026: HF, PyPI, PyTorch, NGC, Docker Hub,
+  GitHub). Heavy setup goes through `slurm/setup.sbatch`, because torch CPU work aborts on login
+  nodes (AOCL BLIS). Jobs still default to `HF_HUB_OFFLINE=1` so runs only use cached files
+  (`VQ_ONLINE=1` lifts it), and Ultralytics auto-install is disabled.
 - Everything lives under `$SCRATCH/vidquery` (see `slurm/README.md` for the layout); `$SCRATCH` is
   purged, so copy keepers to `/project/def-branzana/`.
 - `slurm/env.sh` is the single source of paths and versions. It defines `vq_exec` (TensorRT
@@ -85,9 +87,8 @@ scripts/  slurm/  configs/  docker/  tests/
 ## First GPU session: run in this order
 
 ```bash
-cd ~/vidquery && module load apptainer
-bash slurm/setup_env.sh                       # login node
-bash scripts/download_mot17.sh                # login node
+cd ~/vidquery && mkdir -p $SCRATCH/vidquery/logs
+sbatch slurm/setup.sbatch                     # containers, venv, weights, MOT17, CPU tests
 sbatch slurm/export.sbatch                    # check results/parity.md + gpu-tests.txt
 sbatch slurm/benchmark.sbatch
 sbatch slurm/ingest.sbatch
@@ -99,7 +100,8 @@ Nothing below has run on a GPU yet. Verify these first, in order, and fix what b
 
 1. **Driver vs container CUDA.** `nvidia-smi` on a GPU node. `26.03-py3` is CUDA 13, which needs a
    driver ≥ 580 (or forward compatibility). If the driver is older, pick an NGC tag with CUDA 12.x
-   and set `VQ_TORCH_INDEX` to the matching `cu12x` index (`slurm/env.sh`).
+   and set `VQ_TORCH_INDEX` to the matching `cu12x` index (`slurm/env.sh`). Fir had driver
+   580.178.04 / CUDA 13.0 in November 2026, so no change was needed.
 2. **TensorRT import in the venv:** `vq_exec python -c "import tensorrt; print(tensorrt.__version__)"`.
 3. **ONNX Runtime CUDA EP.** PyPI `onnxruntime-gpu` targets CUDA 12. The parity/benchmark tables
    print the provider (`onnxruntime:fp32 (CUDA)` vs `(CPU)`). If it fell back to CPU, install a
@@ -114,7 +116,7 @@ Nothing below has run on a GPU yet. Verify these first, in order, and fix what b
 6. **TensorRT version.** 26.03 = TensorRT 10.16: weakly-typed FP16 flags and the (deprecated)
    entropy calibrator should work. On TensorRT 11 (26.04+), FP16 goes through the strongly
    typed FP16-ONNX fallback (`onnxconverter-common`) and INT8 needs `INT8_METHOD=modelopt`
-   (`pip install -e .[int8]` on the login node). Both paths are untested.
+   (`pip install -e .[int8]` in the venv, inside a job). Both paths are untested.
 7. **vLLM + Qwen3.5.** Check `vllm.sbatch` comes up (`--limit-mm-per-prompt '{"image": 1}'` is the
    JSON form newer vLLM wants) and that a request returns `logprobs`. Quick check from a job:
    `curl $URL/models`. If answers are not "Yes"/"No" tokens, thinking is not disabled. Look at
