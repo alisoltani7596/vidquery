@@ -3,10 +3,12 @@
 Each candidate backend is compared against a reference (PyTorch FP32 by default) on the same
 preprocessed inputs. Metrics:
 
-* ``max_abs`` / ``mean_abs`` and an ``allclose(atol, rtol)`` check on raw outputs,
-* ``min_cosine`` over per-sample output vectors (what matters for retrieval),
-* for the detector, ``det_f1``: agreement of the *decoded* person boxes (IoU >= 0.5), which is
-  robust to harmless reorderings inside NMS-free heads.
+* encoders: ``max_abs`` / ``mean_abs``, an ``allclose(atol, rtol)`` check on raw outputs and
+  ``min_cosine`` over per-sample embeddings (what matters for retrieval);
+* detector: ``det_f1``, agreement of the *decoded* person boxes (IoU >= 0.5, score threshold from
+  the config), plus the largest box and score error over matched high-confidence detections.
+  The raw head output is not compared elementwise: an NMS-free head returns its top-k
+  detections sorted by score, so near-ties reorder rows without changing any detection.
 
 Default tolerances depend on the candidate's precision and can be overridden.
 """
@@ -57,16 +59,24 @@ DEFAULT_TOLERANCES: dict[str, Tolerance] = {
 }
 
 
+# Box/score errors are reported over matched detections whose reference score is at least this
+# (or the detector's conf_threshold, if higher): near-threshold boxes jitter more and matter less.
+HIGH_CONFIDENCE = 0.5
+
+
 class ParityResult(BaseModel):
     reference: str
     candidate: str
     description: str
-    max_abs: float
-    mean_abs: float
-    allclose: bool | None
-    min_cosine: float
-    mean_cosine: float
+    max_abs: float | None = None
+    mean_abs: float | None = None
+    allclose: bool | None = None
+    min_cosine: float | None = None
+    mean_cosine: float | None = None
     det_f1: float | None = None
+    det_matched: int | None = None
+    max_box_err: float | None = None
+    max_score_err: float | None = None
     tolerance: Tolerance
     passed: bool
     failures: list[str]
@@ -77,26 +87,43 @@ class ParityReport(BaseModel):
     model: str
     num_samples: int
     results: list[ParityResult]
+    note: str = ""
 
     @property
     def passed(self) -> bool:
         return all(r.passed for r in self.results)
 
     def to_markdown(self) -> str:
-        rows = [
-            f"### Parity: `{self.component}` ({self.model}), {self.num_samples} samples",
-            "",
-            "| candidate | vs | max abs | mean abs | min cos | det F1 | pass |",
-            "|---|---|---|---|---|---|---|",
-        ]
+        rows = [f"### Parity: `{self.component}` ({self.model}), {self.num_samples} samples", ""]
+        if self.note:
+            rows += [self.note, ""]
+        if self.component == "detector":
+            rows += [
+                "| candidate | vs | det F1 | matched | max box err (px) | max score err | pass |",
+                "|---|---|---|---|---|---|---|",
+            ]
+        else:
+            rows += [
+                "| candidate | vs | max abs | mean abs | min cos | pass |",
+                "|---|---|---|---|---|---|",
+            ]
         for r in self.results:
-            f1 = "-" if r.det_f1 is None else f"{r.det_f1:.4f}"
             verdict = "yes" if r.passed else "NO: " + "; ".join(r.failures)
-            rows.append(
-                f"| {r.description} | {r.reference} | {r.max_abs:.3e} | {r.mean_abs:.3e} | "
-                f"{r.min_cosine:.6f} | {f1} | {verdict} |"
-            )
+            if self.component == "detector":
+                cells = [
+                    _fmt(r.det_f1, ".4f"),
+                    _fmt(r.det_matched, "d"),
+                    _fmt(r.max_box_err, ".2f"),
+                    _fmt(r.max_score_err, ".4f"),
+                ]
+            else:
+                cells = [_fmt(r.max_abs, ".3e"), _fmt(r.mean_abs, ".3e"), _fmt(r.min_cosine, ".6f")]
+            rows.append(f"| {r.description} | {r.reference} | {' | '.join(cells)} | {verdict} |")
         return "\n".join(rows)
+
+
+def _fmt(value: float | int | None, spec: str) -> str:
+    return "-" if value is None else format(value, spec)
 
 
 def synthetic_images(n: int, size: tuple[int, int] = (480, 640), seed: int = 0) -> list[np.ndarray]:
@@ -122,10 +149,23 @@ def _cosines(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return np.where(den > 0, num / np.maximum(den, 1e-30), 1.0)
 
 
-def detection_f1(
-    ref: Sequence[Sequence[Detection]], out: Sequence[Sequence[Detection]], iou: float = 0.5
-) -> float:
+class DetectionMatch(BaseModel):
+    f1: float
+    matched: int
+    max_box_err: float | None  # pixels, original image coordinates
+    max_score_err: float | None
+
+
+def match_detections(
+    ref: Sequence[Sequence[Detection]],
+    out: Sequence[Sequence[Detection]],
+    iou: float = 0.5,
+    high_conf: float = HIGH_CONFIDENCE,
+) -> DetectionMatch:
+    """Greedy one-to-one matching (best IoU first) of decoded detections, per image."""
     matched = total = 0
+    box_errs: list[float] = []
+    score_errs: list[float] = []
     for r, o in zip(ref, out, strict=True):
         total += len(r) + len(o)
         if not r or not o:
@@ -137,13 +177,27 @@ def detection_f1(
         )
         used_r: set[int] = set()
         used_o: set[int] = set()
-        for _, i, j in pairs:  # greedy one-to-one matching, best IoU first
+        for _, i, j in pairs:
             if i in used_r or j in used_o:
                 continue
             used_r.add(i)
             used_o.add(j)
-            matched += 2
-    return 1.0 if total == 0 else matched / total
+            matched += 1
+            if r[i].score >= high_conf:
+                box_errs.append(float(np.abs(np.subtract(r[i].box, o[j].box)).max()))
+                score_errs.append(abs(r[i].score - o[j].score))
+    return DetectionMatch(
+        f1=1.0 if total == 0 else 2 * matched / total,
+        matched=matched,
+        max_box_err=max(box_errs) if box_errs else None,
+        max_score_err=max(score_errs) if score_errs else None,
+    )
+
+
+def detection_f1(
+    ref: Sequence[Sequence[Detection]], out: Sequence[Sequence[Detection]], iou: float = 0.5
+) -> float:
+    return match_detections(ref, out, iou).f1
 
 
 def compare(ref: np.ndarray, out: np.ndarray, tol: Tolerance) -> tuple[dict[str, Any], list[str]]:
@@ -257,6 +311,7 @@ def run_parity(
         return dets
 
     ref_dets = decode(ref_out) if component == "detector" else None
+    high_conf = max(settings.detector.conf_threshold, HIGH_CONFIDENCE)
     results: list[ParityResult] = []
     for cand in candidates:
         spec = BackendSpec.parse(cand) if isinstance(cand, str) else cand
@@ -270,11 +325,6 @@ def run_parity(
                     reference=str(ref_spec),
                     candidate=str(spec),
                     description=str(spec),
-                    max_abs=float("inf"),
-                    mean_abs=float("inf"),
-                    allclose=None,
-                    min_cosine=-1.0,
-                    mean_cosine=-1.0,
                     tolerance=tol,
                     passed=False,
                     failures=[f"unavailable: {exc}"],
@@ -286,30 +336,40 @@ def run_parity(
         backend.close()
         del backend
         gc.collect()
-        metrics, failures = compare(ref_out, out, tol)
-        det_f1 = None
-        if ref_dets is not None and out.shape == ref_out.shape:
-            det_f1 = detection_f1(ref_dets, decode(out))
-            if tol.min_det_f1 is not None and det_f1 < tol.min_det_f1:
-                failures.append(f"det F1 {det_f1:.4f} < {tol.min_det_f1}")
-            # Raw dense-head scores below threshold can drift harmlessly; boxes are what count.
-            if spec.precision != "fp32":
-                failures = [f for f in failures if not f.startswith("min cosine")]
+        if ref_dets is not None:
+            m = match_detections(ref_dets, decode(out), high_conf=high_conf)
+            metrics: dict[str, Any] = {
+                "det_f1": m.f1,
+                "det_matched": m.matched,
+                "max_box_err": m.max_box_err,
+                "max_score_err": m.max_score_err,
+            }
+            failures: list[str] = []
+            if tol.min_det_f1 is not None and m.f1 < tol.min_det_f1:
+                failures.append(f"det F1 {m.f1:.4f} < {tol.min_det_f1}")
+        else:
+            metrics, failures = compare(ref_out, out, tol)
         results.append(
             ParityResult(
                 reference=str(ref_spec),
                 candidate=str(spec),
                 description=desc,
-                det_f1=det_f1,
                 tolerance=tol,
                 passed=not failures,
                 failures=failures,
                 **metrics,
             )
         )
+    note = ""
+    if component == "detector":
+        note = (
+            f"Judged by detection F1 (IoU >= 0.5, score >= {settings.detector.conf_threshold:g}); "
+            f"box/score errors over matched detections with reference score >= {high_conf:g}."
+        )
     return ParityReport(
         component=component,
         model=settings.detector.model if component == "detector" else settings.encoder.model,
         num_samples=int(ref_out.shape[0]),
         results=results,
+        note=note,
     )

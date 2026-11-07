@@ -11,7 +11,14 @@ from vidquery.backends.onnx_backend import OnnxRuntimeBackend
 from vidquery.config import Settings
 from vidquery.export.onnx_export import export_component, onnx_input_shape
 from vidquery.models.registry import COMPONENTS, component_spec, create_backend, onnx_path
-from vidquery.parity import DEFAULT_TOLERANCES, Tolerance, compare, detection_f1, run_parity
+from vidquery.parity import (
+    DEFAULT_TOLERANCES,
+    Tolerance,
+    compare,
+    detection_f1,
+    match_detections,
+    run_parity,
+)
 from vidquery.types import Detection
 
 
@@ -65,6 +72,18 @@ def test_detection_f1() -> None:
     b = [[Detection(0, 0, 10, 10, 0.9)], [Detection(1, 1, 2, 2, 0.5)]]
     assert detection_f1(a, b) == pytest.approx(2 / 4)
     assert detection_f1([[]], [[]]) == 1.0
+
+
+def test_match_detections_errors() -> None:
+    ref = [[Detection(0, 0, 10, 10, 0.9), Detection(50, 50, 60, 60, 0.4)]]
+    # Same detections, listed in another order (as a top-k head reorders near-ties).
+    out = [[Detection(51, 50, 60, 61, 0.42), Detection(0, 2, 10, 10, 0.88)]]
+    m = match_detections(ref, out, high_conf=0.5)
+    assert m.f1 == 1.0 and m.matched == 2
+    # Errors only over matched pairs with reference score >= 0.5 (the first box).
+    assert m.max_box_err == pytest.approx(2.0)
+    assert m.max_score_err == pytest.approx(0.02)
+    assert match_detections([[]], [[]]).max_box_err is None
 
 
 def test_missing_artifacts_are_reported(tiny_settings: Settings) -> None:
