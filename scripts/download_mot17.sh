@@ -22,7 +22,11 @@ if [[ ! -d "$DEST/train" ]]; then
     echo "Unzipping (this takes a few minutes on Lustre)"
     tmp="$DEST/.unzip"
     rm -rf "$tmp" && mkdir -p "$tmp"
-    unzip -q "$ZIP" -d "$tmp"
+    # The DPM/FRCNN/SDP copies share the same frames, so extract only FRCNN (~11K files
+    # instead of ~34K; the Fir /scratch file quota is tight). MOT17_ALL_COPIES=1 extracts all.
+    members=('*-FRCNN/*')
+    [[ "${MOT17_ALL_COPIES:-0}" == "1" ]] && members=()
+    unzip -q "$ZIP" "${members[@]}" -d "$tmp"
     # The archive has a top-level MOT17/ directory; flatten it.
     src="$tmp"
     [[ -d "$tmp/MOT17" ]] && src="$tmp/MOT17"

@@ -39,6 +39,12 @@ for step in "${steps[@]}"; do
             python -m pip install --upgrade pip
             python -m pip install --index-url '$VQ_TORCH_INDEX' torch torchvision
             python -m pip install -e '$VQ_REPO[gpu,yolo,dev]'
+            # Ultralytics pulls opencv-python, whose cv2 needs X11 libraries (libxcb.so.1) that
+            # the container lacks. Both wheels write cv2/, so drop it and reinstall the headless
+            # build vidquery depends on.
+            python -m pip uninstall -y opencv-python
+            python -m pip install --force-reinstall --no-deps opencv-python-headless
+            python -c 'import cv2; print(\"OpenCV\", cv2.__version__)'
             python -c 'import torch, onnxruntime; print(\"torch\", torch.__version__, \"| ORT\", onnxruntime.__version__, onnxruntime.get_available_providers())'
             # This step has no --nv and setup.sbatch has no GPU; export.sbatch rechecks on a GPU.
             python -c 'import tensorrt; print(\"TensorRT\", tensorrt.__version__)' \
