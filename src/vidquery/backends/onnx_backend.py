@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -23,6 +24,13 @@ _ORT_TO_NUMPY = {
 }
 
 
+def _usable_cpus() -> int:
+    try:
+        return len(os.sched_getaffinity(0))
+    except AttributeError:  # not available on macOS
+        return os.cpu_count() or 1
+
+
 class OnnxRuntimeBackend(InferenceBackend):
     kind = "onnxruntime"
 
@@ -41,8 +49,9 @@ class OnnxRuntimeBackend(InferenceBackend):
             )
         opts = ort.SessionOptions()
         opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-        if intra_op_threads:
-            opts.intra_op_num_threads = intra_op_threads
+        # ORT's default sizes the pool to every core on the node and pins threads, which fails
+        # inside a Slurm cgroup; use the CPUs this process may actually run on.
+        opts.intra_op_num_threads = intra_op_threads or _usable_cpus()
         providers: list[str | tuple[str, dict[str, str]]] = ["CPUExecutionProvider"]
         if device.startswith("cuda"):
             dev_id = device.split(":", 1)[1] if ":" in device else "0"
@@ -52,6 +61,11 @@ class OnnxRuntimeBackend(InferenceBackend):
                 log.warning("CUDAExecutionProvider unavailable; onnxruntime will run on CPU")
         self.session = ort.InferenceSession(str(path), sess_options=opts, providers=providers)
         self.providers = self.session.get_providers()
+        if len(providers) > 1 and "CUDAExecutionProvider" not in self.providers:
+            # ORT only warns when the CUDA provider fails to load (CUDA major or cuDNN mismatch).
+            log.error(
+                "CUDAExecutionProvider failed to load for %s; running on %s", path, self.providers
+            )
         self.path = path
         self.input_names = [i.name for i in self.session.get_inputs()]
         self.output_names = [o.name for o in self.session.get_outputs()]
