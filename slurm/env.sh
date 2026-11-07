@@ -30,8 +30,11 @@ export VQ_TORCH_INDEX="${VQ_TORCH_INDEX:-https://download.pytorch.org/whl/cu130}
 export VQ_VLLM_TAG="${VQ_VLLM_TAG:-v0.17.1}"
 export VQ_VLLM_IMAGE="${VQ_VLLM_IMAGE:-docker://vllm/vllm-openai:$VQ_VLLM_TAG}"
 export VQ_VLLM_SIF="${VQ_VLLM_SIF:-$VQ_CONTAINERS/vllm-openai_$VQ_VLLM_TAG.sif}"
-# Python venv created *inside* the TensorRT container (sees its tensorrt package).
-export VQ_VENV="${VQ_VENV:-$VQ_ROOT/venv-trt-$VQ_TRT_TAG}"
+# Python venv created *inside* the TensorRT container (sees its tensorrt package) and packed
+# into one SquashFS image: as plain files it is ~47K entries against a 1M /scratch file quota.
+# Jobs mount the image read-only at $VQ_VENV; setup_env.sh venv rebuilds it.
+export VQ_VENV_IMG="${VQ_VENV_IMG:-$VQ_ROOT/venv-trt-$VQ_TRT_TAG.sqfs}"
+export VQ_VENV="${VQ_VENV:-/opt/venv}"   # path inside the container
 
 # --- models ------------------------------------------------------------------------------
 export VQ_CONFIG="${VQ_CONFIG:-$VQ_REPO/configs/fir.yaml}"
@@ -87,6 +90,13 @@ _vq_binds() {
     [[ -d /scratch ]] && binds="$binds,/scratch"
     [[ -d /project ]] && binds="$binds,/project"
     [[ -n "${SLURM_TMPDIR:-}" ]] && binds="$binds,$SLURM_TMPDIR"
+    # The venv: a writable directory while setup_env.sh builds it (VQ_VENV_DIR), else the
+    # read-only image (gzip SquashFS; Fir's Apptainer can't read zstd images).
+    if [[ -n "${VQ_VENV_DIR:-}" ]]; then
+        binds="$binds,$VQ_VENV_DIR:$VQ_VENV"
+    elif [[ -f "$VQ_VENV_IMG" ]]; then
+        binds="$binds,$VQ_VENV_IMG:$VQ_VENV:image-src=/"
+    fi
     echo "$binds"
 }
 
@@ -146,7 +156,7 @@ vq_stop_vllm() {
 
 vq_banner() {
     echo "== $(date -Is) job=${SLURM_JOB_ID:-none} node=$(hostname) repo=$VQ_REPO"
-    echo "== config=$VQ_CONFIG trt=$VQ_TRT_SIF venv=$VQ_VENV"
+    echo "== config=$VQ_CONFIG trt=$VQ_TRT_SIF venv=$VQ_VENV_IMG"
     command -v nvidia-smi >/dev/null && nvidia-smi --query-gpu=name,driver_version,memory.total \
         --format=csv,noheader || true
 }

@@ -164,7 +164,8 @@ MOT17 has no text annotations, so the queries have to be written by hand (see
 The `slurm/` folder targets the Digital Research Alliance of Canada **Fir** cluster (H100), but any
 Slurm + Apptainer cluster works with small edits to `slurm/env.sh`. Docker isn't available there,
 so the NGC TensorRT and vLLM images are pulled as Apptainer SIFs. A Python venv is created
-*inside* the TensorRT container (`--system-site-packages`, so it sees the container's TensorRT).
+*inside* the TensorRT container (`--system-site-packages`, so it sees the container's TensorRT),
+pinned by a lock file and packed into one SquashFS image to stay within the file quota.
 Containers, venv, weights, caches, data and results all live on `$SCRATCH`. Jobs use cached files
 only by default (`VQ_ONLINE=1` lifts this).
 
