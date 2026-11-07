@@ -111,8 +111,14 @@ docker run --rm --gpus all -p 8080:8080 -v $PWD/data:/data vidquery:gpu serve
 |---|---|---|
 | torch → ONNX | `scripts/export_onnx.py` | dynamic batch; dynamo exporter (opset 18) or TorchScript (opset 17); Ultralytics' exporter for YOLO |
 | ONNX → TensorRT | `scripts/build_trt.py --precisions fp32 fp16` | optimisation profile 1/8/32; FP32 builds disable TF32 |
-| INT8 | `scripts/build_trt.py --precisions int8 --calib <videos>` | entropy calibration on real frames + person-shaped crops, or `--int8-method modelopt` (Q/DQ) |
-| Parity | `scripts/parity_check.py` | vs PyTorch FP32: max/mean abs, `allclose`, min cosine, and detection F1 on decoded boxes; per-precision tolerances, override with `--tolerances` |
+| INT8 (experimental) | `scripts/build_trt.py --precisions int8 --calib <videos>` | entropy calibration on real frames + person-shaped crops; not in the deployed config (see below) |
+| Parity | `scripts/parity_check.py` | vs PyTorch FP32. Encoders: max/mean abs, `allclose`, min cosine. Detector: detection F1 on decoded boxes (IoU 0.5, config score threshold) plus max box/score error on matched high-confidence detections. Per-precision tolerances, override with `--tolerances` |
+
+**INT8 is not deployed.** On Fir (TensorRT 10.16) the entropy-calibrated YOLO26 detector agreed
+with PyTorch FP32 on only 76% of detections (F1 0.76): calibration hurts the YOLO26 head. The
+SigLIP 2 INT8 engine gave exactly the FP16 result, because TensorRT's implicit INT8 does not
+quantize the transformer's matmuls. `configs/fir.yaml` therefore uses TensorRT FP16 for both
+models; `INT8=1 sbatch slurm/export.sbatch` still builds and reports INT8 for comparison.
 
 ## Benchmarks
 
@@ -184,7 +190,9 @@ sbatch slurm/eval.sbatch                # eval with/without verifier (starts vLL
 sbatch slurm/vllm.sbatch                # or: standalone vLLM server for other jobs
 ```
 
-The pulls are equivalent to:
+The TensorRT container is pinned to `nvcr.io/nvidia/tensorrt:26.03-py3` (TensorRT 10.16, CUDA
+13.2; needs a driver ≥ 580). Newer tags ship TensorRT 11, which vidquery does not support yet
+(see Limitations). The pulls are equivalent to:
 
 ```bash
 apptainer pull $SCRATCH/vidquery/containers/tensorrt_26.03-py3.sif docker://nvcr.io/nvidia/tensorrt:26.03-py3
@@ -235,7 +243,14 @@ runs lint, mypy, the tests and a CPU Docker build on every push.
 * **The verifier is slow and expensive.** One VLM call per verified segment; its benefit has to be
   shown by the eval, which needs hand-written queries for MOT17.
 * **TensorRT engines are not portable.** They are tied to the GPU model and TensorRT version that
-  built them, so rebuild per cluster/container. INT8 accuracy depends on calibration data.
+  built them, so rebuild per cluster/container.
+* **TensorRT 11 is not supported.** TensorRT 11 drops the weakly typed precision flags. The
+  strongly typed fallback (an FP16 copy of the ONNX graph) still fails to parse because an FP32
+  tensor reaches an FP16 convolution, and INT8 would need explicit quantization. The container
+  stays on 26.03 (TensorRT 10.16) until that is fixed.
+* **INT8 is experimental.** Entropy calibration drops detector F1 to 0.76 and leaves SigLIP 2
+  unquantized (see Backends). Future work: explicit Q/DQ quantization with TensorRT Model
+  Optimizer (ModelOpt).
 * **Single-process service.** The FAISS index lives in memory (exact search), and ingest jobs are
   tracked in memory. That's fine for thousands of videos, not for a multi-replica deployment.
 * **Untested on GPU from this repo's CI.** GitHub Actions only runs CPU paths. TensorRT, CUDA EP

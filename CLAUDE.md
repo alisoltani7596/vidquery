@@ -107,20 +107,25 @@ Nothing below has run on a GPU yet. Verify these first, in order, and fix what b
    and set `VQ_TORCH_INDEX` to the matching `cu12x` index (`slurm/env.sh`). Fir had driver
    580.178.04 / CUDA 13.0 in November 2026, so no change was needed.
 2. **TensorRT import in the venv:** `vq_exec python -c "import tensorrt; print(tensorrt.__version__)"`.
-3. **ONNX Runtime CUDA EP.** PyPI `onnxruntime-gpu` targets CUDA 12. The parity/benchmark tables
-   print the provider (`onnxruntime:fp32 (CUDA)` vs `(CPU)`). If it fell back to CPU, install a
-   CUDA 13 build of ORT, or report ORT numbers as CPU.
-4. **YOLO26 torch wrapper vs ONNX.** `UltralyticsDetectorNet` returns `model(x)[0]` in eval mode.
-   The detector parity (detection F1) checks that it matches Ultralytics' ONNX export. If the
-   layouts differ, set the Detect head's `export`/`format` attributes the way Ultralytics'
-   exporter does.
+3. **ONNX Runtime CUDA EP.** PyPI `onnxruntime-gpu` 1.31 is a CUDA 13 build (it links
+   `libcublas.so.13`) and ran on the CUDA EP on Fir in November 2026. ORT only warns when the
+   CUDA EP fails to load, so `scripts/gpu_check.py` (first step of `export.sbatch`) and the GPU
+   test fail on a CPU fallback, and the tables print the provider (`onnxruntime:fp32 (CUDA)`).
+4. **YOLO26 torch wrapper vs ONNX.** Ultralytics 8.4 runs the one-to-many head in eval mode and
+   `fuse()` deletes the unused branch, so `UltralyticsDetectorNet` sets `head.end2end = True`
+   before fusing (as the exporter does with `nms=False`); both then output `[B, 300, 6]`.
+   Detector parity is judged by detection F1 only: top-k rows reorder on near-ties, so the raw
+   tensor is not compared elementwise. On Fir: ORT F1 0.998, TensorRT FP32 1.000, FP16 0.997.
 5. **Dynamo export of SigLIP 2 So400m.** If it fails or TensorRT can't parse it, run
    `EXPORTER=torchscript sbatch slurm/export.sbatch`. If ONNX > 2 GB, external data is written
    automatically for big models.
-6. **TensorRT version.** 26.03 = TensorRT 10.16: weakly-typed FP16 flags and the (deprecated)
-   entropy calibrator should work. On TensorRT 11 (26.04+), FP16 goes through the strongly
-   typed FP16-ONNX fallback (`onnxconverter-common`) and INT8 needs `INT8_METHOD=modelopt`
-   (`pip install -e .[int8]` in the venv, inside a job). Both paths are untested.
+6. **TensorRT version.** The container is pinned to 26.03 = TensorRT 10.16 (weakly typed FP16
+   flags, deprecated entropy calibrator). TensorRT 11 (26.04+) is unsupported: the strongly typed
+   FP16-ONNX fallback fails to parse (FP32 tensor into an FP16 Conv; its GPU test is xfail),
+   and INT8 would need `INT8_METHOD=modelopt`, whose `[onnx]` extra pins
+   `onnxruntime-gpu<1.31` and `onnx~=1.21` (it needs its own venv image). INT8 is experimental
+   and not deployed: detector F1 0.76 with entropy calibration, SigLIP INT8 == FP16 (implicit INT8
+   leaves transformer matmuls in FP16). `INT8=1` parity is reported but never fails the job.
 7. **vLLM + Qwen3.5.** Check `vllm.sbatch` comes up (`--limit-mm-per-prompt '{"image": 1}'` is the
    JSON form newer vLLM wants) and that a request returns `logprobs`. Quick check from a job:
    `curl $URL/models`. If answers are not "Yes"/"No" tokens, thinking is not disabled. Look at
@@ -136,4 +141,5 @@ Note the GPU, driver, container tag and versions next to the tables.
 
 Tracking (ByteTrack) to merge segments by identity and ground "walking left"; IVF/HNSW FAISS
 indexes for large corpora; caching crop thumbnails for faster verification; batching several
-images per VLM request; a Triton Inference Server deployment of the TensorRT engines.
+images per VLM request; a Triton Inference Server deployment of the TensorRT engines; explicit
+Q/DQ INT8 with TensorRT Model Optimizer; TensorRT 11 support.
