@@ -33,11 +33,18 @@ from vidquery.types import Segment
 log = logging.getLogger(__name__)
 
 
+Range = tuple[float, float]
+
+
 class QuerySpec(BaseModel):
+    """One eval query. ``gt`` is a list of [start, end] seconds in ``video_id``, or, when the
+    description matches people in several videos, a mapping {video_id: [[start, end], ...]}."""
+
     id: str | None = None
     query: str
-    video_id: str
-    gt: list[tuple[float, float]] = Field(default_factory=list)
+    video_id: str | None = None
+    gt: list[Range] | dict[str, list[Range]] = Field(default_factory=list)
+    split: str | None = Field(default=None, description="'val' (tuning) or 'test'")
 
     @model_validator(mode="before")
     @classmethod
@@ -48,6 +55,30 @@ class QuerySpec(BaseModel):
                     data = {**data, "gt": data.pop(key)}
                     break
         return data
+
+    @model_validator(mode="after")
+    def _check(self) -> QuerySpec:
+        if isinstance(self.gt, list) and not self.video_id:
+            raise ValueError("video_id is required when gt is a list of ranges")
+        for _, start, end in self.ranges:
+            if end < start:
+                raise ValueError(f"gt range [{start}, {end}] ends before it starts")
+        return self
+
+    @property
+    def ranges(self) -> list[tuple[str, float, float]]:
+        """Every ground-truth range as (video_id, start, end)."""
+        if isinstance(self.gt, dict):
+            return [(vid, s, e) for vid, rs in self.gt.items() for s, e in rs]
+        assert self.video_id is not None
+        return [(self.video_id, s, e) for s, e in self.gt]
+
+    @property
+    def video_ids(self) -> list[str]:
+        ids = {vid for vid, _, _ in self.ranges}
+        if self.video_id:
+            ids.add(self.video_id)
+        return sorted(ids)
 
 
 def load_queries(path: str | Path) -> list[QuerySpec]:
@@ -62,14 +93,18 @@ def load_queries(path: str | Path) -> list[QuerySpec]:
     return specs
 
 
-def is_hit(seg: Segment, spec: QuerySpec, tiou: float = 0.0) -> bool:
-    if seg.video_id != spec.video_id:
-        return False
-    return any(
-        temporal_overlap((seg.start, seg.end), gt) > 0
-        and temporal_iou((seg.start, seg.end), gt) >= tiou
-        for gt in spec.gt
+def _hits_range(seg: Segment, rng: tuple[str, float, float], tiou: float) -> bool:
+    vid, start, end = rng
+    span = (seg.start, seg.end)
+    return (
+        seg.video_id == vid
+        and temporal_overlap(span, (start, end)) > 0
+        and temporal_iou(span, (start, end)) >= tiou
     )
+
+
+def is_hit(seg: Segment, spec: QuerySpec, tiou: float = 0.0) -> bool:
+    return any(_hits_range(seg, rng, tiou) for rng in spec.ranges)
 
 
 def score_query(
@@ -87,12 +122,10 @@ def score_query(
         top = segments[:k]
         out[f"recall@{k}"] = float(any(hits[:k]))
         out[f"precision@{k}"] = sum(hits[:k]) / len(top) if top else 0.0
-        covered = 0
-        for gt in spec.gt:
-            single = QuerySpec(query=spec.query, video_id=spec.video_id, gt=[gt])
-            covered += any(is_hit(s, single, tiou) for s in top)
-        out[f"covered@{k}"] = covered
-    out["num_gt"] = len(spec.gt)
+        out[f"covered@{k}"] = sum(
+            any(_hits_range(s, rng, tiou) for s in top) for rng in spec.ranges
+        )
+    out["num_gt"] = len(spec.ranges)
     return out
 
 
@@ -115,7 +148,7 @@ def evaluate(
             spec.query,
             max_segments=max_k,
             verify=verify,
-            video_ids=[spec.video_id] if per_video else None,
+            video_ids=spec.video_ids if per_video else None,
         )
         latencies.append((time.perf_counter() - t0) * 1000)
         row = score_query(result.segments, spec, ks, tiou)
@@ -197,7 +230,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--ks", nargs="+", type=int, default=[1, 5, 10])
     p.add_argument("--tiou", type=float, default=0.0, help="Temporal IoU needed for a hit")
-    p.add_argument("--per-video", action="store_true", help="Search only the query's video")
+    p.add_argument("--per-video", action="store_true", help="Search only the query's video(s)")
+    p.add_argument("--split", help="Only queries with this split (e.g. val or test)")
     p.add_argument("--out", default="results/eval.json")
     p.add_argument("--md", default="results/eval.md")
     return p
@@ -213,7 +247,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     if engine.index is None:
         raise SystemExit(f"No index at {settings.index_dir}; ingest videos first")
     queries = load_queries(args.queries)
-    missing = sorted({q.video_id for q in queries} - set(engine.index.videos))
+    if args.split:
+        queries = [q for q in queries if q.split == args.split]
+        if not queries:
+            raise SystemExit(f"No queries with split={args.split!r} in {args.queries}")
+    missing = sorted({v for q in queries for v in q.video_ids} - set(engine.index.videos))
     if missing:
         log.warning("Queries reference videos that are not indexed: %s", missing)
     modes = {"off": [False], "on": [True], "both": [False, True]}[args.verifier]

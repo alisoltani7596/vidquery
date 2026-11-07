@@ -63,7 +63,8 @@ gets killed, resubmit: pulls resume from the layer cache.
 | `export.sbatch` | ONNX export (3 components), TensorRT FP32/FP16 engines, parity report, `pytest -m gpu` | `INT8=1`, `INT8_METHOD=modelopt`, `EXPORTER=torchscript`, `CALIB=<dir>` |
 | `benchmark.sbatch` | latency/throughput/peak memory, batch 1/4/8/16, ingest FPS | `BACKENDS="..."`, `VIDEO=<mp4>` |
 | `ingest.sbatch` | ingest every video/sequence in a directory | `DATASET=<dir>`, `EXTRA="--set ..."` |
-| `eval.sbatch` | eval with/without verifier; starts vLLM in the same job by default | `QUERIES=`, `VERIFIER=off/on/both`, `VLM_URL=`, `VLLM_MEM=0.45` |
+| `browse.sbatch` | print top segments per query, save one contact sheet per query and optional per-video timelines | queries as args, `QUERIES=`, `K=10`, `TIMELINE=all`, `EVERY=1`, `OUT=` |
+| `eval.sbatch` | eval with/without verifier; starts vLLM in the same job by default | `QUERIES=`, `SPLIT=val/test`, `VERIFIER=off/on/both`, `VLM_URL=`, `VLLM_MEM=0.45` |
 | `vllm.sbatch` | standalone vLLM server; writes its URL to `$SCRATCH/vidquery/vllm_endpoint` | `VQ_VLM_MODEL=Qwen/Qwen3.5-2B`, `VLLM_MEM` |
 
 Every job sources `slurm/env.sh`, which defines `vq_exec` (run in the TensorRT container with

@@ -156,7 +156,15 @@ VLM verifier:
 * **P@10**, **MRR**, and query latency
 
 MOT17 has no text annotations, so the queries have to be written by hand (see
-`data/queries.example.jsonl` for the format).
+`data/queries.example.jsonl` for the format). When a description matches people in more than
+one video, give `gt` as `{"MOT17-02": [[3.0, 8.5]], "MOT17-09": [[0.0, 4.0]]}` instead of
+`video_id` + list. `"split": "val"` or `"test"` marks which queries may be used for tuning;
+`--split test` evaluates only the held-out ones.
+
+`vidquery browse "query" ... --timeline all` (or `slurm/browse.sbatch`) helps write them: it prints
+the top segments per query, saves one contact sheet per query (best frame of each segment, boxes
+drawn) and one sheet per video with a frame every second, captioned with timestamps. Take the
+ground truth from the videos, not from the retrieved segments.
 
 *Placeholder: fill in from `results/eval.md`.*
 

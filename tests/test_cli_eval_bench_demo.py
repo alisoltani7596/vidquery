@@ -133,6 +133,21 @@ def test_score_query_metrics() -> None:
     assert strict["recall@5"] == 0.0  # tIoU of (11, 13) vs (10, 12) is 1/3
 
 
+def test_query_spec_multi_video_and_split() -> None:
+    spec = QuerySpec.model_validate_json(
+        '{"query": "q", "gt": {"a": [[1, 2]], "b": [[5, 6], [8, 9]]}, "split": "test"}'
+    )
+    assert spec.split == "test" and spec.video_ids == ["a", "b"] and len(spec.ranges) == 3
+    segs = [
+        Segment(video_id="b", start=5.5, end=6.5, score=0.9, retrieval_score=0.9, num_hits=1),
+        Segment(video_id="a", start=1.0, end=1.5, score=0.8, retrieval_score=0.8, num_hits=1),
+    ]
+    row = score_query(segs, spec, ks=(1, 2), tiou=0.0)
+    assert row["recall@1"] == 1.0 and row["covered@2"] == 2 and row["num_gt"] == 3
+    with pytest.raises(ValueError, match="video_id is required"):
+        QuerySpec.model_validate({"query": "q", "gt": [[1, 2]]})
+
+
 def test_evaluate_on_synthetic(
     mock_settings: Settings, synthetic_video: Path, tmp_path: Path
 ) -> None:
