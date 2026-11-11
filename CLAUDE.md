@@ -41,6 +41,9 @@ src/vidquery/
   parity.py        cross-backend comparison + markdown report
   bench.py         benchmark harness (subprocess isolation, NVML memory)
   evaluation.py    queries.jsonl metrics + eval CLI
+  geo/             vidquery locate: geometry.py (haversine, coarsen), backends.py (GeoCLIP, mock),
+                   aggregate.py (clusters, radius, alternatives), people.py, vlm.py, locate.py,
+                   mapview.py (Leaflet), evaluation.py (predict/tune/test), osv5m.py, mot17.py
   api.py, cli.py, demo.py, synthetic.py
 scripts/  slurm/  configs/  docker/  tests/
 ```
@@ -136,6 +139,21 @@ Nothing below has run on a GPU yet. Verify these first, in order, and fix what b
 After good runs: paste `results/benchmark.md`, `results/parity.md` and `results/eval.md` into
 the README placeholders, and tune `query.score_margin` / `merge_gap_s` with the eval script.
 Note the GPU, driver, container tag and versions next to the tables.
+
+## Geolocation (`vidquery locate`)
+
+- Coarse by design: every reported position goes through `geo.geometry.coarsen` (decimals match
+  the radius, radius widened by the rounding shift, floor `geo.min_radius_km` = 25). Don't add
+  outputs that bypass it, and keep the responsible-use note in the README and in `notice`.
+- The VLM opinion is shown next to the GeoCLIP estimate, never fused into it.
+- Benchmark protocol: tune only on OSV-5M val (`scripts/geo_eval.py tune`), freeze
+  `results/geo-params.yaml`, run `test` once (it refuses to overwrite `geo-eval.md`).
+- `data/mot17_locations.json`: `known` only with a source URL + quote; otherwise `unknown` with
+  null coordinates. All 14 sequences were unknown when checked (November 2026).
+- Fir: geoclip is installed `--no-deps` (its wheel asks for Pillow>=13, the lock pins 12) plus
+  pandas/geopy; the CLIP ViT-L/14 backbone is pre-fetched by the `weights` step.
+- No copyrighted movie footage or frames in the repo; local tests on such files stay in
+  `$SCRATCH`.
 
 ## Ideas not done yet
 

@@ -9,6 +9,10 @@ encoder run interchangeably on PyTorch, ONNX Runtime and TensorRT (FP32/FP16/INT
 scripts, a numerical parity checker, a benchmark harness and a retrieval evaluation. It ships as a
 FastAPI service, a CLI, Docker images and Slurm/Apptainer jobs for an H100 cluster.
 
+A second feature answers *"where was this filmed?"* with a deliberately coarse estimate: GeoCLIP
+on sampled frames, aggregated into an area with a confidence radius and alternatives, plus an
+optional VLM second opinion and a Leaflet map (see [Where was this filmed?](#where-was-this-filmed)).
+
 ## Architecture
 
 ```mermaid
@@ -173,6 +177,136 @@ ground truth from the videos, not from the retrieved segments.
 | embedding only | – | – | – | – | – | – | – |
 | with VLM verifier | – | – | – | – | – | – | – |
 
+## Where was this filmed?
+
+`vidquery locate` estimates where a video was recorded. The output is a coarse area, never a
+point.
+
+1. **Sample frames** at 1 fps (`geo.sample_fps`, capped at `geo.max_frames`).
+2. **Skip person frames.** Frames whose person boxes cover more than half of the image
+   (`geo.max_person_fraction`) are dropped. They say little about the place, and dropping them
+   keeps the estimate about the scene, not the people in it.
+3. **Predict per frame.** [GeoCLIP](https://github.com/VicenteVivan/geo-clip) (NeurIPS 2023) scores
+   each remaining frame against a gallery of 100K GPS locations and keeps the top-k.
+4. **Aggregate.** All frames' top-k points are pooled, weighted by a softmax over their logits,
+   and clustered on the sphere.
+   * The heaviest cluster is the estimate.
+   * Its **confidence radius** is the distance that holds 68% of *all* the probability mass, so
+     frames that disagree produce a large circle instead of a falsely precise point.
+   * The next three clusters are the **alternatives**, each with its share of the mass.
+5. **Round to the radius.** Coordinates get only as many decimals as the radius supports (0.1° for
+   tens of km, 1° for hundreds). The radius is then widened by the rounding shift, so the
+   reported circle still contains the unrounded one. The radius is never below 25 km
+   (`geo.min_radius_km`).
+6. **Optional VLM second opinion.** Qwen, through the same vLLM endpoint as the verifier, looks at
+   the three most confident frames and names a country, a city (only when a sign or landmark
+   supports it) and the visual clues it used. It is reported **next to** the GeoCLIP estimate and
+   never mixed into its number.
+
+```bash
+vidquery locate video.mp4 --map where.html          # JSON on stdout, HTML map on disk
+vidquery locate video.mp4 --vlm --frames            # + VLM opinion and per-frame top-1
+curl -X POST localhost:8080/locate -H 'content-type: application/json' \
+     -d '{"video_path": "/data/videos/clip.mp4", "vlm": true}'
+curl -X POST localhost:8080/locate/map -d '{"video_path": "/data/videos/clip.mp4"}' \
+     -H 'content-type: application/json' > where.html
+```
+
+`/locate` and `/locate/map` obey `server.allowed_roots` like `/ingest`. GeoCLIP loads on the first
+request. The map is a self-contained page: the estimate is a circle with its radius and the
+alternatives are dashed circles. There is no pin marker, and zoom is capped at city scale.
+It uses Leaflet 1.9.4 with OpenStreetMap tiles. The output looks like this (abridged; mock
+backend on the synthetic video, `configs/mock.yaml`):
+
+```json
+{
+  "video": "data/synthetic/synthetic.mp4",
+  "backend": "mock",
+  "sample_fps": 1.0,
+  "frames_sampled": 12,
+  "frames_used": 12,
+  "frames_skipped_people": 0,
+  "estimate": {"lat": 40.7, "lon": -74.0, "radius_km": 27.0, "share": 0.959},
+  "alternatives": [
+    {"lat": 48.9, "lon": 2.4, "radius_km": 31.0, "share": 0.022},
+    {"lat": 35.7, "lon": 139.7, "radius_km": 31.0, "share": 0.018}
+  ],
+  "coverage_mass": 0.68,
+  "vlm": null,
+  "notice": "Coarse estimate: the circle of radius_km around the point ho..."
+}
+```
+
+GeoCLIP is an optional extra: `pip install -e ".[geo]"` (the Fir venv installs it, see
+`slurm/setup_env.sh`). Tests use a deterministic mock backend and never download it.
+
+### Benchmark
+
+* **Data.** The [OpenStreetView-5M](https://huggingface.co/datasets/osv5m/osv5m) test set: street
+  view with GPS labels, CC BY-SA 4.0. `scripts/osv5m_subset.py` draws a fixed subset (seed 0) and
+  splits it **by Mapillary sequence**, so frames from one drive never land in both splits.
+* **Clips.** 1,000 val and 2,000 test single images, one per sequence. There are also up to 200
+  "sequence" clips per split: 3 to 8 images from one drive, all within 5 km, standing in for the
+  frames of a video.
+* **Protocol.** The aggregation settings (`top_k`, temperature, frame weighting, cluster bandwidth,
+  radius mass) are grid-searched on **val only**, then frozen in `results/geo-params.yaml`.
+  The test split is reported **once**: `scripts/geo_eval.py test` refuses to overwrite its
+  result.
+* **Run.** `sbatch slurm/geo_eval.sbatch` runs the whole protocol on Fir.
+* **Metrics.** Errors are great-circle distances from the unrounded estimate. "in radius" is how
+  often the truth falls inside the reported radius, which shows whether the radius is calibrated.
+
+*Placeholder: fill in from `results/geo-eval.md` after the Fir run.*
+
+| setting | n | <1 km % | <25 km % | <200 km % | <750 km % | <2500 km % | median km | in radius % |
+|---|---|---|---|---|---|---|---|---|
+| image: GeoCLIP top-1 (no aggregation) | – | – | – | – | – | – | – | – |
+| image: aggregation frozen on val | – | – | – | – | – | – | – | – |
+| sequence: GeoCLIP top-1 (no aggregation) | – | – | – | – | – | – | – | – |
+| sequence: aggregation frozen on val | – | – | – | – | – | – | – | – |
+
+OSV-5M is street-level imagery from Mapillary. GeoCLIP was trained on Flickr photos (MP-16), so
+this is an out-of-domain test. Im2GPS3k was not used because its Flickr images do not come with
+one clear license.
+
+### MOT17
+
+`data/mot17_locations.json` records, for each of the 14 sequences, what the sources say about
+where it was filmed:
+* **What was checked:** the MOT16 paper's sequence table, the MOTChallenge page, and the source
+  dataset of MOT17-05/06 (Ess et al., CVPR 2008).
+* **What was found:** no source states a recording place for any sequence, so all 14 are
+  `unknown` with null coordinates. Nothing is guessed. Secondary sources describe the
+  MOT17-05/06 source data as Zurich footage, but no source says so for these two sequences;
+  that note is recorded without coordinates.
+* **What that means for the results:** they are qualitative only, with no ground truth to score.
+
+*Placeholder: fill in from `results/geo-mot17.md` (GeoCLIP estimate, alternatives, VLM
+country/city per sequence) and add the map screenshot below.*
+
+<!-- ![Map view](docs/geo-map.png) -->
+
+### Licenses and data
+
+| Component | License | How it is used |
+|---|---|---|
+| GeoCLIP code, heads and 100K GPS gallery (`pip install geoclip`) | MIT | inference only |
+| CLIP ViT-L/14 backbone (`openai/clip-vit-large-patch14`) | weights released with the MIT-licensed `openai/CLIP` repo; its model card puts deployed use and surveillance out of scope | frozen image encoder inside GeoCLIP |
+| OpenStreetView-5M test set | CC BY-SA 4.0 | read from the downloaded zips for metrics; no images in the repo |
+| Leaflet 1.9.4 | BSD-2-Clause | loaded from unpkg with SRI hashes |
+| OpenStreetMap tiles | ODbL data, © OpenStreetMap contributors (attribution shown on the map) | light use under the OSM tile policy; set `geo.map_tiles_url` for anything heavier |
+
+No movie footage or frames are part of this repository. Test runs on copyrighted material stay in
+`$SCRATCH` and out of git.
+
+### Responsible use
+
+This feature is intended for public scenes and landmarks. It outputs a confidence area, not a
+precise pin, and it is not intended for locating individuals. The radius never goes below 25 km
+and coordinates are rounded to match. Frames dominated by people are skipped, and the VLM is
+told not to use people's appearance as a clue. Don't use it to find where a private person
+lives, works or was filmed.
+
 ## Deploying on an HPC cluster with Apptainer
 
 The `slurm/` folder targets the Digital Research Alliance of Canada **Fir** cluster (H100), but any
@@ -196,6 +330,7 @@ sbatch slurm/benchmark.sbatch           # latency/throughput/memory + ingest FPS
 sbatch slurm/ingest.sbatch              # index all MOT17 sequences
 sbatch slurm/eval.sbatch                # eval with/without verifier (starts vLLM in-job)
 sbatch slurm/vllm.sbatch                # or: standalone vLLM server for other jobs
+sbatch slurm/geo_eval.sbatch            # geolocation: OSV-5M val/test + MOT17 maps
 ```
 
 The TensorRT container is pinned to `nvcr.io/nvidia/tensorrt:26.03-py3` (TensorRT 10.16, CUDA
@@ -261,6 +396,11 @@ runs lint, mypy, the tests and a CPU Docker build on every push.
   Optimizer (ModelOpt).
 * **Single-process service.** The FAISS index lives in memory (exact search), and ingest jobs are
   tracked in memory. That's fine for thousands of videos, not for a multi-replica deployment.
+* **Geolocation is coarse and fallible.** GeoCLIP was trained on Flickr photos. Indoor scenes,
+  night footage and generic streets carry few location cues, so expect radii of hundreds to
+  thousands of km there. The radius is calibrated on OSV-5M val, and other footage may be less
+  well calibrated. The VLM opinion can be confidently wrong, which is why it is never fused into
+  the number.
 * **Untested on GPU from this repo's CI.** GitHub Actions only runs CPU paths. TensorRT, CUDA EP
   and vLLM paths are exercised by the Slurm jobs.
 
@@ -275,6 +415,7 @@ src/vidquery/
   segments.py      hit merging                  verify.py    VLM verifier (HTTP)
   parity.py        cross-backend checks         bench.py     benchmark harness
   evaluation.py    retrieval metrics            api.py, cli.py, demo.py
+  geo/             vidquery locate: GeoCLIP, aggregation, map view, OSV-5M + MOT17 eval
 scripts/           export, TensorRT, parity, benchmark, eval, MOT17 download/convert
 slurm/             Apptainer + sbatch for the Fir cluster
 configs/           default, fir, tiny, mock
