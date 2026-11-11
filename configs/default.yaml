@@ -48,3 +48,23 @@ verifier:
 server:
   host: 0.0.0.0
   port: 8080
+
+geo:                           # vidquery locate / POST /locate (coarse by design)
+  backend: geoclip             # geoclip (pip install 'vidquery[geo]') | mock
+  clip_model: openai/clip-vit-large-patch14
+  sample_fps: 1.0
+  max_frames: 120
+  # Aggregation: defaults until scripts/geo_eval.py tune freezes them on the val split
+  # (copy results/geo-params.yaml here afterwards).
+  top_k: 10
+  temperature: 1.0
+  frame_weighting: uniform
+  cluster_km: 200
+  confidence_mass: 0.68
+  min_radius_km: 25            # never report a smaller area
+  alternatives: 3
+  skip_person_frames: true
+  max_person_fraction: 0.5
+  vlm:
+    enabled: false             # second opinion from the verifier endpoint (Qwen via vLLM)
+    frames: 3

@@ -38,3 +38,13 @@ verifier:
 
 server:
   allowed_roots: ["${SCRATCH}/vidquery/data"]
+
+geo:
+  backend: geoclip
+  clip_model: openai/clip-vit-large-patch14   # pre-fetched by slurm/setup_env.sh weights
+  batch_size: 32
+  sample_fps: 1.0
+  min_radius_km: 25
+  vlm:
+    enabled: false                     # geo_eval.sbatch turns it on for the MOT17 table
+    frames: 3

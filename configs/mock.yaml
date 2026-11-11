@@ -12,3 +12,5 @@ ingest:
   min_box_size: 6
 query:
   score_margin: 0.05
+geo:
+  backend: mock          # brightness -> one of four anchor cities; for tests and demos

@@ -104,12 +104,66 @@ class VerifierConfig(_Base):
     )
 
 
+GEO_VLM_PROMPT = (
+    "Where was this picture taken? Use only visible clues: language and script on signs, "
+    "licence plates, road markings, driving side, architecture, vegetation, landmarks. Do not "
+    "use the appearance of people as a clue. Reply with JSON only, no other text: "
+    '{"country": "<country or null>", "city": "<city or null>", "clues": ["<short clue>"]}. '
+    "Give a city only if a visible clue such as a sign or a landmark supports it; otherwise "
+    "use null. If nothing points to a country, use null for it too."
+)
+
+
+class GeoVLMConfig(_Base):
+    """Optional VLM second opinion for ``locate``. Uses the endpoint and model in ``verifier``."""
+
+    enabled: bool = False
+    frames: int = Field(3, ge=1, le=16, description="Most confident frames sent, one per request.")
+    max_tokens: int = Field(300, ge=16)
+    max_image_side: int = Field(768, ge=64)
+    prompt: str = GEO_VLM_PROMPT
+
+
+class GeoConfig(_Base):
+    """Visual geolocation (``vidquery locate``). The aggregation fields are tuned on a validation
+    split by ``scripts/geo_eval.py tune`` and then frozen; see README "Where was this filmed?"."""
+
+    backend: Literal["geoclip", "mock"] = "geoclip"
+    clip_model: str = Field(
+        "openai/clip-vit-large-patch14", description="CLIP backbone (HF id or local path)."
+    )
+    device: str | None = Field(None, description="Defaults to the top-level device.")
+    sample_fps: float = Field(1.0, gt=0.0)
+    max_frames: int = Field(120, ge=1, description="Sample fewer frames per second on long videos.")
+    batch_size: int = Field(16, ge=1)
+    top_k: int = Field(10, ge=1, le=1000, description="Gallery points kept per frame.")
+    temperature: float = Field(1.0, gt=0.0, description="Softmax temperature over the top-k.")
+    frame_weighting: Literal["uniform", "mass"] = Field(
+        "uniform", description="'mass' weights frames by the probability held by their top-k."
+    )
+    cluster_km: float = Field(200.0, gt=0.0, description="Clustering bandwidth.")
+    confidence_mass: float = Field(
+        0.68, gt=0.0, lt=1.0, description="The radius holds this share of the probability mass."
+    )
+    min_radius_km: float = Field(25.0, gt=0.0, description="Never report a smaller radius.")
+    alternatives: int = Field(3, ge=0, le=10)
+    skip_person_frames: bool = True
+    max_person_fraction: float = Field(
+        0.5, ge=0.0, le=1.0, description="Skip frames where person boxes cover more than this."
+    )
+    map_tiles_url: str = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+    map_attribution: str = (
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    )
+    vlm: GeoVLMConfig = Field(default_factory=GeoVLMConfig)
+
+
 class ServerConfig(_Base):
     host: str = "0.0.0.0"
     port: int = 8080
     allowed_roots: list[Path] = Field(
         default_factory=list,
-        description="If non-empty, /ingest only accepts videos under these directories.",
+        description="If non-empty, /ingest and /locate only accept videos under these directories.",
     )
 
 
@@ -125,6 +179,7 @@ class Settings(_Base):
     query: QueryConfig = Field(default_factory=QueryConfig)
     verifier: VerifierConfig = Field(default_factory=VerifierConfig)
     server: ServerConfig = Field(default_factory=ServerConfig)
+    geo: GeoConfig = Field(default_factory=GeoConfig)
 
 
 def _expand_env(value: Any) -> Any:
