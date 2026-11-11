@@ -57,6 +57,11 @@ for step in "${steps[@]}"; do
             # build vidquery depends on.
             python -m pip uninstall -y opencv-python
             python -m pip install $pins --force-reinstall --no-deps opencv-python-headless
+            # GeoCLIP for vidquery locate (the 'geo' extra). Its wheel asks for Pillow>=13, which
+            # the validated lock does not have; it runs on the pinned Pillow, so install it
+            # without dependencies and add the two it needs that the venv lacks.
+            python -m pip install $pins pandas geopy
+            python -m pip install --no-deps 'geoclip>=1.3,<2'
             python -m pip freeze --exclude-editable > '$VQ_VENV_IMG.freeze.txt'
         "
         unset VQ_VENV_DIR
@@ -81,6 +86,8 @@ import os
 from huggingface_hub import snapshot_download
 for repo, patterns in [
     ("$VQ_SIGLIP_MODEL", ["*.json", "*.safetensors", "*.model", "*.txt"]),
+    # CLIP ViT-L/14 backbone of GeoCLIP (vidquery locate); the GeoCLIP heads ship in its wheel.
+    ("openai/clip-vit-large-patch14", ["*.json", "*.safetensors", "*.txt"]),
     ("$VQ_VLM_MODEL", None),
 ]:
     path = snapshot_download(repo_id=repo, allow_patterns=patterns)

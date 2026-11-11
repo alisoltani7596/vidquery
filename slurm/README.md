@@ -15,9 +15,10 @@ it).
 | `weights/` | `yolo26s.pt` |
 | `data/MOT17/` | `MOT17.zip`, `videos/*.mp4` and per-sequence `seqinfo.ini` / `gt/gt.txt` (no frames) |
 | `data/queries.jsonl` | hand-written eval queries (you create this) |
+| `data/osv5m/` | OSV-5M `test.csv`, test image zips (never extracted), val/test manifests, cached GeoCLIP predictions |
 | `artifacts/onnx`, `artifacts/trt` | exported ONNX models and TensorRT engines |
 | `index/mot17/` | FAISS index + metadata |
-| `results/` | parity, benchmark and eval JSON/markdown |
+| `results/` | parity, benchmark, eval and geolocation JSON/markdown, `geo-params.yaml`, `geo-maps/*.html` |
 | `logs/` | Slurm and vLLM logs |
 
 `$SCRATCH` is purged after a period of inactivity. Copy `results/` you want to keep to
@@ -41,6 +42,7 @@ apptainer pull $VQ_TRT_SIF  docker://nvcr.io/nvidia/tensorrt:26.03-py3
 apptainer pull $VQ_VLLM_SIF docker://vllm/vllm-openai:v0.17.1
 apptainer exec $VQ_TRT_SIF python3 -m venv --system-site-packages /opt/venv   # on $SLURM_TMPDIR
 # + pip install torch (cu130 wheels) and -e .[gpu,yolo,dev], pinned by slurm/venv-lock-<tag>.txt
+# + geoclip (--no-deps; it asks for Pillow>=13, the lock pins 12) with pandas and geopy
 mksquashfs <venv> $VQ_VENV_IMG -comp gzip       # one file instead of ~47K
 # + weight downloads, MOT17 -> mp4 (frames decoded from the zip, never extracted), CPU tests
 ```
@@ -66,6 +68,7 @@ gets killed, resubmit: pulls resume from the layer cache.
 | `browse.sbatch` | print top segments per query, save one contact sheet per query and optional per-video timelines | queries as args, `QUERIES=`, `K=10`, `TIMELINE=all`, `EVERY=1`, `OUT=` |
 | `eval.sbatch` | eval with/without verifier; starts vLLM in the same job by default | `QUERIES=`, `SPLIT=val/test`, `VERIFIER=off/on/both`, `VLM_URL=`, `VLLM_MEM=0.45` |
 | `vllm.sbatch` | standalone vLLM server; writes its URL to `$SCRATCH/vidquery/vllm_endpoint` | `VQ_VLM_MODEL=Qwen/Qwen3.5-2B`, `VLLM_MEM` |
+| `geo_eval.sbatch` | geolocation: OSV-5M subset download, GeoCLIP predictions, tune on val, test once, MOT17 table + HTML maps (VLM opinion in-job) | `STEPS="data predict tune test mot17"`, `OSV_SHARDS="00"`, `VLM=0`, `VLM_URL=` |
 
 Every job sources `slurm/env.sh`, which defines `vq_exec` (run in the TensorRT container with
 the venv) and `vq_vllm_exec`. For interactive work:
@@ -76,6 +79,25 @@ source slurm/env.sh
 vq_exec vidquery query "man in a blue shirt walking left" -k 5
 vq_exec python -m pytest -m gpu tests
 ```
+
+## Geolocation (`geo_eval.sbatch`)
+
+The geo packages are part of the venv image, so an image built before them needs a rebuild:
+`STEPS="venv weights" sbatch slurm/setup.sbatch`. That also caches the CLIP ViT-L/14 backbone;
+refresh `slurm/venv-lock-<tag>.txt` from `$VQ_VENV_IMG.freeze.txt` afterwards. Then
+`sbatch slurm/geo_eval.sbatch`:
+
+1. `data` downloads `test.csv` and the five OSV-5M test zips (~9.4 GB, six files) into
+   `data/osv5m/` and writes the val/test manifests (seed 0).
+2. `predict` caches GeoCLIP's top-50 for every image in one `.npz`.
+3. `tune` searches the aggregation settings on **val only** and freezes them in
+   `results/geo-params.yaml` (+ `geo-val.md`).
+4. `test` reports the test split **once** to `results/geo-eval.md`. It refuses to overwrite.
+5. `mot17` locates each MOT17 video with the frozen settings and a Qwen second opinion, and
+   writes `results/geo-mot17.md` and one HTML map per sequence in `results/geo-maps/`.
+
+Commit `geo-eval.md`, `geo-val.md`, `geo-mot17.md` and `geo-params.yaml`. Copy the frozen values
+into the `geo:` section of `configs/fir.yaml` and `configs/default.yaml`.
 
 ## Changing versions
 
