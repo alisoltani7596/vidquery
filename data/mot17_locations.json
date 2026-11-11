@@ -1,0 +1,254 @@
+{
+  "about": "Documented recording places of the MOT17 sequences, for qualitative geolocation checks. A sequence is 'known' only when a source states where it was filmed (URL + quote); otherwise it is 'unknown' with null coordinates. Nothing here is guessed.",
+  "checked": "2026-11-10: MOT16 paper (arXiv 1603.00831, read in full), MOTChallenge MOT17 page and Ess et al. CVPR 2008 (search snippets only; the pages could not be loaded from the build environment). Re-check those pages before treating any sequence as known.",
+  "sequences": [
+    {
+      "sequence": "MOT17-01",
+      "status": "unknown",
+      "place": null,
+      "lat": null,
+      "lon": null,
+      "precision_km": null,
+      "scene": "test split; static camera, medium viewpoint, cloudy",
+      "sources": [
+        {
+          "url": "https://arxiv.org/abs/1603.00831",
+          "quote": "MOT16-01 | 30 | 1920x1080 | 450 (00:15) | 23 | 6,395 | 14.2 | static | medium | cloudy | new",
+          "note": "MOT16 paper, Table 2 (Name | FPS | Resolution | Length | Tracks | Boxes | Density | Camera | Viewpoint | Conditions | Source). It gives no recording place; MOT17 reuses the MOT16 frames."
+        }
+      ],
+      "notes": null
+    },
+    {
+      "sequence": "MOT17-02",
+      "status": "unknown",
+      "place": null,
+      "lat": null,
+      "lon": null,
+      "precision_km": null,
+      "scene": "train split; static camera, medium viewpoint, cloudy",
+      "sources": [
+        {
+          "url": "https://arxiv.org/abs/1603.00831",
+          "quote": "MOT16-02 | 30 | 1920x1080 | 600 (00:20) | 49 | 17,833 | 29.7 | static | medium | cloudy | new",
+          "note": "MOT16 paper, Table 2 (Name | FPS | Resolution | Length | Tracks | Boxes | Density | Camera | Viewpoint | Conditions | Source). It gives no recording place; MOT17 reuses the MOT16 frames."
+        }
+      ],
+      "notes": null
+    },
+    {
+      "sequence": "MOT17-03",
+      "status": "unknown",
+      "place": null,
+      "lat": null,
+      "lon": null,
+      "precision_km": null,
+      "scene": "test split; static camera, high viewpoint, night",
+      "sources": [
+        {
+          "url": "https://arxiv.org/abs/1603.00831",
+          "quote": "MOT16-03 | 30 | 1920x1080 | 1,500 (00:50) | 148 | 104,556 | 69.7 | static | high | night | new",
+          "note": "MOT16 paper, Table 2 (Name | FPS | Resolution | Length | Tracks | Boxes | Density | Camera | Viewpoint | Conditions | Source). It gives no recording place; MOT17 reuses the MOT16 frames."
+        }
+      ],
+      "notes": null
+    },
+    {
+      "sequence": "MOT17-04",
+      "status": "unknown",
+      "place": null,
+      "lat": null,
+      "lon": null,
+      "precision_km": null,
+      "scene": "train split; static camera, high viewpoint, night",
+      "sources": [
+        {
+          "url": "https://arxiv.org/abs/1603.00831",
+          "quote": "MOT16-04 | 30 | 1920x1080 | 1,050 (00:35) | 80 | 47,557 | 45.3 | static | high | night | new",
+          "note": "MOT16 paper, Table 2 (Name | FPS | Resolution | Length | Tracks | Boxes | Density | Camera | Viewpoint | Conditions | Source). It gives no recording place; MOT17 reuses the MOT16 frames."
+        }
+      ],
+      "notes": null
+    },
+    {
+      "sequence": "MOT17-05",
+      "status": "unknown",
+      "place": null,
+      "lat": null,
+      "lon": null,
+      "precision_km": null,
+      "scene": "train split; moving camera, medium viewpoint, sunny",
+      "sources": [
+        {
+          "url": "https://arxiv.org/abs/1603.00831",
+          "quote": "MOT16-05 | 14 | 640x480 | 837 (01:00) | 124 | 6,818 | 8.1 | moving | medium | sunny | [13]",
+          "note": "MOT16 paper, Table 2 (Name | FPS | Resolution | Length | Tracks | Boxes | Density | Camera | Viewpoint | Conditions | Source). It gives no recording place; MOT17 reuses the MOT16 frames."
+        },
+        {
+          "url": "https://www.vision.rwth-aachen.de/media/papers/ess08cvpr.pdf",
+          "quote": "[13] A. Ess, B. Leibe, K. Schindler, and L. Van Gool. A mobile vision system for robust multi-person tracking. In CVPR 2008.",
+          "note": "Source dataset cited by the MOT16 paper for this sequence."
+        }
+      ],
+      "notes": "Taken from the ETH mobile-platform data of Ess et al. Secondary sources call that data the 'Zurich Mobile Pedestrian corpus', but no source found states where this particular sequence was filmed, so it stays unknown."
+    },
+    {
+      "sequence": "MOT17-06",
+      "status": "unknown",
+      "place": null,
+      "lat": null,
+      "lon": null,
+      "precision_km": null,
+      "scene": "test split; moving camera, medium viewpoint, sunny",
+      "sources": [
+        {
+          "url": "https://arxiv.org/abs/1603.00831",
+          "quote": "MOT16-06 | 14 | 640x480 | 1,194 (01:25) | 217 | 11,538 | 9.7 | moving | medium | sunny | [13]",
+          "note": "MOT16 paper, Table 2 (Name | FPS | Resolution | Length | Tracks | Boxes | Density | Camera | Viewpoint | Conditions | Source). It gives no recording place; MOT17 reuses the MOT16 frames."
+        },
+        {
+          "url": "https://www.vision.rwth-aachen.de/media/papers/ess08cvpr.pdf",
+          "quote": "[13] A. Ess, B. Leibe, K. Schindler, and L. Van Gool. A mobile vision system for robust multi-person tracking. In CVPR 2008.",
+          "note": "Source dataset cited by the MOT16 paper for this sequence."
+        }
+      ],
+      "notes": "Taken from the ETH mobile-platform data of Ess et al. Secondary sources call that data the 'Zurich Mobile Pedestrian corpus', but no source found states where this particular sequence was filmed, so it stays unknown."
+    },
+    {
+      "sequence": "MOT17-07",
+      "status": "unknown",
+      "place": null,
+      "lat": null,
+      "lon": null,
+      "precision_km": null,
+      "scene": "test split; moving camera, medium viewpoint, shadow",
+      "sources": [
+        {
+          "url": "https://arxiv.org/abs/1603.00831",
+          "quote": "MOT16-07 | 30 | 1920x1080 | 500 (00:17) | 55 | 16,322 | 32.6 | moving | medium | shadow | new",
+          "note": "MOT16 paper, Table 2 (Name | FPS | Resolution | Length | Tracks | Boxes | Density | Camera | Viewpoint | Conditions | Source). It gives no recording place; MOT17 reuses the MOT16 frames."
+        }
+      ],
+      "notes": null
+    },
+    {
+      "sequence": "MOT17-08",
+      "status": "unknown",
+      "place": null,
+      "lat": null,
+      "lon": null,
+      "precision_km": null,
+      "scene": "test split; static camera, medium viewpoint, sunny",
+      "sources": [
+        {
+          "url": "https://arxiv.org/abs/1603.00831",
+          "quote": "MOT16-08 | 30 | 1920x1080 | 625 (00:21) | 63 | 16,737 | 26.8 | static | medium | sunny | new",
+          "note": "MOT16 paper, Table 2 (Name | FPS | Resolution | Length | Tracks | Boxes | Density | Camera | Viewpoint | Conditions | Source). It gives no recording place; MOT17 reuses the MOT16 frames."
+        }
+      ],
+      "notes": null
+    },
+    {
+      "sequence": "MOT17-09",
+      "status": "unknown",
+      "place": null,
+      "lat": null,
+      "lon": null,
+      "precision_km": null,
+      "scene": "train split; static camera, low viewpoint, indoor",
+      "sources": [
+        {
+          "url": "https://arxiv.org/abs/1603.00831",
+          "quote": "MOT16-09 | 30 | 1920x1080 | 525 (00:18) | 25 | 5,257 | 10.0 | static | low | indoor | new",
+          "note": "MOT16 paper, Table 2 (Name | FPS | Resolution | Length | Tracks | Boxes | Density | Camera | Viewpoint | Conditions | Source). It gives no recording place; MOT17 reuses the MOT16 frames."
+        }
+      ],
+      "notes": null
+    },
+    {
+      "sequence": "MOT17-10",
+      "status": "unknown",
+      "place": null,
+      "lat": null,
+      "lon": null,
+      "precision_km": null,
+      "scene": "train split; moving camera, medium viewpoint, night",
+      "sources": [
+        {
+          "url": "https://arxiv.org/abs/1603.00831",
+          "quote": "MOT16-10 | 30 | 1920x1080 | 654 (00:22) | 54 | 12,318 | 18.8 | moving | medium | night | new",
+          "note": "MOT16 paper, Table 2 (Name | FPS | Resolution | Length | Tracks | Boxes | Density | Camera | Viewpoint | Conditions | Source). It gives no recording place; MOT17 reuses the MOT16 frames."
+        }
+      ],
+      "notes": null
+    },
+    {
+      "sequence": "MOT17-11",
+      "status": "unknown",
+      "place": null,
+      "lat": null,
+      "lon": null,
+      "precision_km": null,
+      "scene": "train split; moving camera, medium viewpoint, indoor",
+      "sources": [
+        {
+          "url": "https://arxiv.org/abs/1603.00831",
+          "quote": "MOT16-11 | 30 | 1920x1080 | 900 (00:30) | 67 | 9,174 | 10.2 | moving | medium | indoor | new",
+          "note": "MOT16 paper, Table 2 (Name | FPS | Resolution | Length | Tracks | Boxes | Density | Camera | Viewpoint | Conditions | Source). It gives no recording place; MOT17 reuses the MOT16 frames."
+        }
+      ],
+      "notes": null
+    },
+    {
+      "sequence": "MOT17-12",
+      "status": "unknown",
+      "place": null,
+      "lat": null,
+      "lon": null,
+      "precision_km": null,
+      "scene": "test split; moving camera, medium viewpoint, indoor",
+      "sources": [
+        {
+          "url": "https://arxiv.org/abs/1603.00831",
+          "quote": "MOT16-12 | 30 | 1920x1080 | 900 (00:30) | 94 | 8,295 | 9.2 | moving | medium | indoor | new",
+          "note": "MOT16 paper, Table 2 (Name | FPS | Resolution | Length | Tracks | Boxes | Density | Camera | Viewpoint | Conditions | Source). It gives no recording place; MOT17 reuses the MOT16 frames."
+        }
+      ],
+      "notes": null
+    },
+    {
+      "sequence": "MOT17-13",
+      "status": "unknown",
+      "place": null,
+      "lat": null,
+      "lon": null,
+      "precision_km": null,
+      "scene": "train split; moving camera, high viewpoint, sunny",
+      "sources": [
+        {
+          "url": "https://arxiv.org/abs/1603.00831",
+          "quote": "MOT16-13 | 25 | 1920x1080 | 750 (00:30) | 68 | 11,450 | 15.3 | moving | high | sunny | new",
+          "note": "MOT16 paper, Table 2 (Name | FPS | Resolution | Length | Tracks | Boxes | Density | Camera | Viewpoint | Conditions | Source). It gives no recording place; MOT17 reuses the MOT16 frames."
+        }
+      ],
+      "notes": null
+    },
+    {
+      "sequence": "MOT17-14",
+      "status": "unknown",
+      "place": null,
+      "lat": null,
+      "lon": null,
+      "precision_km": null,
+      "scene": "test split; moving camera, high viewpoint, sunny",
+      "sources": [
+        {
+          "url": "https://arxiv.org/abs/1603.00831",
+          "quote": "MOT16-14 | 25 | 1920x1080 | 750 (00:30) | 230 | 18,483 | 24.6 | moving | high | sunny | new",
+          "note": "MOT16 paper, Table 2 (Name | FPS | Resolution | Length | Tracks | Boxes | Density | Camera | Viewpoint | Conditions | Source). It gives no recording place; MOT17 reuses the MOT16 frames."
+        }
+      ],
+      "notes": null
+    }
+  ]
+}
