@@ -1,4 +1,5 @@
-"""FastAPI service: ``POST /ingest``, ``POST /query``, ``GET /health`` (+ jobs and videos)."""
+"""FastAPI service: ``POST /ingest``, ``POST /query``, ``POST /locate``, ``GET /health`` (+ jobs,
+videos and an HTML map of a location estimate at ``POST /locate/map``)."""
 
 from __future__ import annotations
 
@@ -13,10 +14,12 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException, status
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from vidquery import __version__
 from vidquery.config import Settings, load_config
+from vidquery.geo.locate import GeoLocator, LocateResult
 from vidquery.pipeline import IngestStats, QueryResult, VidQuery
 from vidquery.types import VideoEntry
 
@@ -49,6 +52,13 @@ class QueryRequest(BaseModel):
     video_ids: list[str] | None = None
 
 
+class LocateRequest(BaseModel):
+    video_path: str = Field(description="Path on the server (video file or image-sequence dir).")
+    sample_fps: float | None = Field(None, gt=0, le=30)
+    vlm: bool | None = Field(None, description="Ask the VLM for a second opinion (geo.vlm).")
+    include_frames: bool = False
+
+
 class HealthResponse(BaseModel):
     status: str
     version: str
@@ -69,9 +79,15 @@ def _check_allowed(path: Path, roots: list[Path]) -> None:
         raise HTTPException(status.HTTP_403_FORBIDDEN, f"{path} is outside server.allowed_roots")
 
 
-def create_app(settings: Settings | None = None, engine: VidQuery | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    engine: VidQuery | None = None,
+    locator: GeoLocator | None = None,
+) -> FastAPI:
     settings = settings or (engine.settings if engine else load_config())
     state: dict[str, VidQuery] = {}
+    geo: dict[str, GeoLocator] = {"locator": locator} if locator else {}
+    geo_lock = threading.Lock()
     jobs: dict[str, JobStatus] = {}
     jobs_lock = threading.Lock()
     executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ingest")
@@ -82,6 +98,8 @@ def create_app(settings: Settings | None = None, engine: VidQuery | None = None)
         yield
         executor.shutdown(wait=False, cancel_futures=True)
         state["engine"].close()
+        if "locator" in geo:
+            geo["locator"].close()
 
     app = FastAPI(title="vidquery", version=__version__, lifespan=lifespan)
 
@@ -161,6 +179,42 @@ def create_app(settings: Settings | None = None, engine: VidQuery | None = None)
     @app.post("/query", response_model=QueryResult)
     def query(req: QueryRequest) -> QueryResult:
         return get_engine().query(req.text, req.max_segments, req.kind, req.verify, req.video_ids)
+
+    def get_locator() -> GeoLocator:
+        with geo_lock:  # GeoCLIP loads on the first /locate, not at startup
+            if "locator" not in geo:
+                geo["locator"] = GeoLocator(settings)
+            return geo["locator"]
+
+    def _locate(req: LocateRequest) -> LocateResult:
+        path = Path(req.video_path)
+        _check_allowed(path, settings.server.allowed_roots)
+        if not path.exists():
+            raise HTTPException(status.HTTP_404_NOT_FOUND, f"{path} does not exist")
+        try:
+            return get_locator().locate(
+                path, sample_fps=req.sample_fps, vlm=req.vlm, include_frames=req.include_frames
+            )
+        except (FileNotFoundError, ValueError) as exc:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+
+    @app.post("/locate", response_model=LocateResult)
+    def locate(req: LocateRequest) -> LocateResult:
+        """Coarse location estimate for a video: a confidence area, never a precise pin."""
+        return _locate(req)
+
+    @app.post("/locate/map", response_class=HTMLResponse)
+    def locate_map(req: LocateRequest) -> HTMLResponse:
+        from vidquery.geo.mapview import render_map_html
+
+        result = _locate(req)
+        return HTMLResponse(
+            render_map_html(
+                result,
+                tiles_url=settings.geo.map_tiles_url,
+                attribution=settings.geo.map_attribution,
+            )
+        )
 
     return app
 

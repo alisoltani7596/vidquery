@@ -3,6 +3,7 @@
     vidquery ingest <video> [--video-id ID] [--fps 2]
     vidquery query "<text>" [-k 10] [--verify]
     vidquery demo "<text>" --out demo.gif
+    vidquery locate <video> [--fps 1] [--vlm] [--map map.html]   (coarse "where was this filmed?")
     vidquery serve
     vidquery export onnx|trt ...
     vidquery parity --component image_encoder --backends onnxruntime tensorrt:fp16
@@ -119,6 +120,34 @@ def cmd_browse(args: argparse.Namespace) -> int:
     browse(engine, queries, Path(args.out), args.k, args.video or None, args.timeline, args.every)
     engine.close()
     return 0
+
+
+def cmd_locate(args: argparse.Namespace) -> int:
+    from vidquery.geo.locate import GeoLocator
+    from vidquery.geo.mapview import render_map_html
+
+    settings = _settings(args)
+    locator = GeoLocator(settings)
+    vlm = True if args.vlm else (False if args.no_vlm else None)
+    result = locator.locate(args.video, sample_fps=args.fps, vlm=vlm, include_frames=args.frames)
+    locator.close()
+    text = result.model_dump_json(indent=2, exclude_none=False)
+    if args.out:
+        Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.out).write_text(text + "\n")
+    if args.map:
+        Path(args.map).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.map).write_text(
+            render_map_html(
+                result,
+                tiles_url=settings.geo.map_tiles_url,
+                attribution=settings.geo.map_attribution,
+            ),
+            encoding="utf-8",
+        )
+        log.info("Map written to %s", args.map)
+    print(text)
+    return 0 if result.estimate is not None else 1
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
@@ -267,6 +296,18 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--every", type=float, default=1.0, help="Timeline step in seconds")
     p.add_argument("--out", default="browse", help="Directory for the sheets")
     p.set_defaults(func=cmd_browse)
+
+    p = sub.add_parser("locate", help="Estimate where a video was filmed (coarse, JSON)")
+    _add_common(p)
+    p.add_argument("video", help="Video file or image-sequence directory")
+    p.add_argument("--fps", type=float, help="Frames sampled per second (default: geo.sample_fps)")
+    vlm = p.add_mutually_exclusive_group()
+    vlm.add_argument("--vlm", action="store_true", help="Ask the VLM for a second opinion")
+    vlm.add_argument("--no-vlm", action="store_true", help="Never ask the VLM")
+    p.add_argument("--frames", action="store_true", help="Include per-frame top-1 (rounded)")
+    p.add_argument("--map", help="Also write an HTML map (Leaflet + OpenStreetMap)")
+    p.add_argument("--out", help="Also write the JSON here")
+    p.set_defaults(func=cmd_locate)
 
     p = sub.add_parser("serve", help="Run the FastAPI server")
     _add_common(p)
